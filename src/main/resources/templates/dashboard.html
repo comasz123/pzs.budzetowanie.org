@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <th:block th:replace="~{fragments/favicon :: favicon}"></th:block>
+    <title th:text="|Budget ${currentOrganization != null ? currentOrganization.name : 'NGO'}|">Budget NGO</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script th:src="@{/js/money-input.js}"></script>
+    <style>
+        .table-responsive { max-height: 70vh; overflow-x: auto; overflow-y: auto; }
+        .budget-matrix td.text-negative,
+        .text-negative { color: #dc3545 !important; font-weight: bold; }
+        .text-positive { color: #198754; font-weight: bold; }
+        .row-link { text-decoration: none; font-weight: 600; color: inherit; }
+        .row-link:hover { text-decoration: underline; color: #0d6efd; }
+        .budget-matrix {
+            font-size: 0.8125rem;
+        }
+        .budget-matrix th,
+        .budget-matrix td {
+            padding: 0.35rem 0.4rem;
+            vertical-align: middle;
+        }
+        .col-label {
+            min-width: 7.5rem;
+            max-width: 11rem;
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+        .budget-matrix thead th.col-label {
+            position: sticky;
+            left: 0;
+            z-index: 4;
+            background: #212529;
+        }
+        .budget-matrix tbody td.col-label {
+            position: sticky;
+            left: 0;
+            z-index: 1;
+            background: #fff;
+        }
+        .col-grant-header {
+            max-width: 5.75rem;
+            min-width: 3.25rem;
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            hyphens: auto;
+            line-height: 1.15;
+            font-size: 0.68rem;
+            font-weight: 600;
+            text-align: end;
+            vertical-align: bottom;
+        }
+        .grant-remaining-label {
+            font-size: 0.58rem;
+            font-weight: 500;
+            opacity: 0.85;
+            line-height: 1.1;
+        }
+        .grant-remaining-value {
+            font-size: 0.68rem;
+            font-weight: 600;
+        }
+        .col-amount-header {
+            max-width: 4.75rem;
+            white-space: normal;
+            word-break: break-word;
+            line-height: 1.15;
+            font-size: 0.68rem;
+            text-align: end;
+            vertical-align: bottom;
+        }
+        .col-amount {
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            font-size: 0.9375rem;
+            font-weight: 500;
+        }
+        .allocation-inner td.col-amount {
+            font-size: 0.9375rem;
+        }
+        .year-select {
+            font-size: 0.85em;
+            font-weight: inherit;
+            line-height: inherit;
+            padding: 0.1rem 2rem 0.1rem 0.5rem;
+            width: auto;
+            min-width: 5.5rem;
+            border: none;
+            background-color: transparent;
+            cursor: pointer;
+        }
+        .year-select:focus {
+            box-shadow: none;
+            border-color: transparent;
+        }
+        .budget-heading-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem 1.5rem;
+        }
+        .kpi-value { white-space: nowrap; }
+        .kpi-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            margin-bottom: 1rem;
+        }
+        .kpi-card {
+            flex: 1 1 0;
+            min-width: 9rem;
+            max-width: 100%;
+        }
+        .kpi-card .card-body {
+            padding: 0.45rem 0.6rem;
+            min-height: 4.4rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .kpi-card .kpi-label {
+            font-size: 0.62rem;
+            line-height: 1.15;
+            margin-bottom: 0.1rem;
+        }
+        .kpi-card .kpi-value {
+            font-size: 1.05rem;
+            line-height: 1.2;
+        }
+        .kpi-card .kpi-note {
+            font-size: 0.55rem;
+            line-height: 1.1;
+            margin-top: 0.15rem;
+        }
+        .kpi-card .card {
+            height: 100%;
+        }
+        tr.budget-subrow.is-collapsed { display: none; }
+        .category-collapse-btn { font-size: 0.75rem; line-height: 1; white-space: nowrap; }
+        .budget-row-depth-0 td.col-label { font-weight: 600; }
+        .budget-row-depth-1 td.col-label { padding-left: 1.25rem; font-weight: 500; }
+        .budget-row-depth-2 td.col-label { padding-left: 2rem; font-weight: 400; font-size: 0.75rem; color: #495057; }
+        tr.grant-remaining-row td { background: #f8f9fa; font-size: 0.8125rem; }
+        tr.grant-remaining-row td.col-label { position: sticky; left: 0; z-index: 1; background: #f8f9fa; }
+        tr.grant-year-split td { background: #f8f9fa; font-size: 0.75rem; color: #495057; }
+        tr.grant-year-split td.col-label { position: sticky; left: 0; z-index: 1; background: #f8f9fa; padding-left: 1.25rem; }
+        .category-order-controls {
+            flex: 0 0 auto;
+        }
+        .drag-handle {
+            display: inline-grid;
+            grid-template-columns: repeat(2, 3px);
+            grid-template-rows: repeat(3, 3px);
+            gap: 2px;
+            width: 18px;
+            height: 18px;
+            padding: 3px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background-color: #fff;
+            cursor: grab;
+            flex-shrink: 0;
+            touch-action: none;
+            align-content: center;
+            justify-content: center;
+            box-shadow: inset 0 0 0 1px #f8f9fa;
+        }
+        .drag-handle::before,
+        .drag-handle::after {
+            content: none;
+        }
+        .drag-handle span {
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background-color: #868e96;
+            display: block;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+        tr.budget-row-dragging > td {
+            opacity: 0.55;
+        }
+        tr.budget-row-drop-target > td.col-label {
+            box-shadow: inset 0 3px 0 #0d6efd;
+        }
+        body.budget-amount-editing .budget-month-amount {
+            width: 8.75rem;
+            min-width: 7rem;
+            margin-left: auto;
+            padding: 0.1rem 0.35rem;
+            font-variant-numeric: tabular-nums;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .budget-edit-only { display: none !important; }
+        body.budget-editing .budget-edit-only { display: inline-flex !important; }
+        body.budget-editing tr.budget-subrow { display: none !important; }
+        body.budget-editing tr.grant-remaining-row,
+        body.budget-editing tr.grant-year-split { display: none !important; }
+        body.budget-editing tr.budget-totals-row { display: none !important; }
+        body.budget-editing .budget-view-amount-col { display: none !important; }
+        body.budget-editing .budget-edit-block { display: table-row !important; }
+        .budget-edit-block { display: none; }
+        .budget-category-open {
+            font-weight: 600;
+            text-align: left;
+            padding: 0;
+        }
+        .structure-drag-handle {
+            display: inline-grid;
+            grid-template-columns: repeat(2, 3px);
+            grid-template-rows: repeat(3, 3px);
+            gap: 2px;
+            width: 18px;
+            height: 18px;
+            padding: 3px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background-color: #fff;
+            cursor: grab;
+            flex-shrink: 0;
+        }
+        .structure-drag-handle span {
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background-color: #868e96;
+            display: block;
+        }
+        #budgetStructureModal .modal-dialog { max-width: 640px; }
+        .budget-fs-context,
+        .budget-fs-months { display: none; }
+        #budget-sheet .alert {
+            margin: 0;
+            border-radius: 0;
+            border-left: 0;
+            border-right: 0;
+        }
+        html.budget-fullscreen,
+        html.budget-fullscreen body {
+            background: #fff;
+            overflow: hidden;
+        }
+        html.budget-fullscreen .budget-page-chrome,
+        html.budget-fullscreen .budget-footer,
+        html.budget-fullscreen .budget-fs-hide { display: none !important; }
+        html.budget-fullscreen .budget-fs-context {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-weight: 600;
+            margin-right: 0.75rem;
+        }
+        html.budget-fullscreen .budget-fs-months {
+            display: flex;
+            flex: 0 0 auto;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.15rem 0.35rem;
+            padding: 0.35rem 0.75rem;
+            border-bottom: 1px solid #dee2e6;
+            background: #fff;
+        }
+        html.budget-fullscreen .budget-fs-months a {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            text-decoration: none;
+            color: #212529;
+            padding: 0.15rem 0.45rem;
+            border-radius: 0.25rem;
+        }
+        html.budget-fullscreen .budget-fs-months a:hover { color: #0d6efd; }
+        html.budget-fullscreen .budget-fs-months a.active {
+            color: #0d6efd;
+            text-decoration: underline;
+            text-underline-offset: 0.2rem;
+        }
+        html.budget-fullscreen .budget-sheet {
+            position: fixed;
+            inset: 0;
+            z-index: 1030;
+            margin: 0;
+            border: 0;
+            border-radius: 0;
+            height: 100vh;
+            height: 100dvh;
+            max-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: none !important;
+        }
+        html.budget-fullscreen .budget-sheet > .table-responsive {
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none;
+        }
+    </style>
+    <script>
+        try {
+            if (sessionStorage.getItem('budgetFullscreen') === '1') {
+                document.documentElement.classList.add('budget-fullscreen');
+            }
+        } catch (e) {}
+    </script>
+</head>
+<body class="bg-light" th:classappend="${editMode and !monthView} ? ' budget-editing' : (${editMode and monthView} ? ' budget-amount-editing' : '')">
+
+<div class="container-fluid px-4 py-3">
+<div class="budget-page-chrome">
+    <div class="budget-heading-row mb-2">
+        <div>
+    <form method="get"
+          th:action="${monthView} ? @{__${budgetBase}__/month} : @{__${budgetBase}__}"
+          class="d-flex flex-wrap align-items-center gap-2 mb-1">
+        <input type="hidden" name="month" th:if="${monthView}" th:value="${selectedMonth}"/>
+        <h2 class="mb-0 d-flex align-items-center flex-wrap gap-1">
+            <span th:text="${budgetBase == '/realizacja'} ? 'Realizacja budżetu (' : 'Budżet Organizacji i Pokrycie Grantowe ('">Budżet Organizacji i Pokrycie Grantowe (</span>
+            <select name="year" class="form-select year-select" onchange="this.form.submit()">
+                <option th:each="y : ${availableYears}" th:value="${y}" th:text="${y}" th:selected="${y == selectedYear}">2026</option>
+            </select>
+            <span th:if="${monthView}"> — </span>
+            <span th:if="${monthView}" th:text="${selectedMonthName}">Styczeń</span>
+            <span>)</span>
+        </h2>
+    </form>
+    <div th:if="${currentOrganization != null}" class="mb-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="fw-semibold fs-5" th:text="${currentOrganization.name}">Fundacja Green Future</span>
+            <span th:if="${currentOrganization.demo}" class="badge text-bg-warning">Demo</span>
+        </div>
+        <div class="text-muted small">
+            <span th:text="${currentOrganization.legalName}">Pełna nazwa</span>
+            <span th:if="${currentOrganization.nip != null}"> · NIP <span th:text="${currentOrganization.nip}">000</span></span>
+            <span th:if="${currentOrganization.city != null}"> · <span th:text="${currentOrganization.city}">Warszawa</span></span>
+        </div>
+    </div>
+    <p class="text-muted mb-0"
+       th:text="${budgetBase == '/realizacja'}
+            ? (monthView ? |Wydatki — ${selectedMonthName} ${selectedYear} (PLN)| : 'Wydatki w PLN')
+            : (monthView ? |Koszty planowane na miesiąc — ${selectedMonthName} ${selectedYear} (PLN)| : 'Wszystkie koszty w PLN')">
+        Wszystkie koszty w PLN
+    </p>
+        </div>
+    </div>
+    <div th:replace="~{fragments/nav :: budget-nav(${monthView} ? 'months' : 'dashboard')}"></div>
+
+    <div class="kpi-row">
+        <div class="kpi-card">
+            <div class="card shadow-sm border-0 border-start border-primary border-4 h-100">
+                <div class="card-body">
+                    <div class="text-muted kpi-label"
+                         th:text="${budgetBase == '/realizacja'} ? 'Wydatki' : 'Całkowity Koszt Planowany'">Całkowity Koszt Planowany</div>
+                    <div class="fw-bold text-dark kpi-value" th:text="${#numbers.formatDecimal(budgetData.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0</div>
+                </div>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="card shadow-sm border-0 border-start border-success border-4 h-100">
+                <div class="card-body">
+                    <div class="text-muted kpi-label">Suma Pokrycia z Grantów</div>
+                    <div class="fw-bold text-success kpi-value" th:text="${#numbers.formatDecimal(budgetData.totalGrantCoverage, 1, 'WHITESPACE', 2, 'COMMA')}">0</div>
+                </div>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="card shadow-sm border-0 border-start border-4 h-100" th:classappend="${budgetData.balance != null && budgetData.balance.signum() > 0} ? 'border-danger' : 'border-success'">
+                <div class="card-body">
+                    <div class="text-muted kpi-label">Bilans</div>
+                    <div class="fw-bold kpi-value"
+                         th:classappend="${budgetData.balance != null && budgetData.balance.signum() > 0} ? 'text-danger' : 'text-success'"
+                         th:text="${#numbers.formatDecimal(budgetData.balance != null ? budgetData.balance.abs() : 0, 1, 'WHITESPACE', 2, 'COMMA')}">0</div>
+                    <div class="text-muted kpi-note"
+                         th:text="${budgetBase == '/realizacja'} ? 'Wydatki bez przypisanego grantu' : 'Niepokryty koszt planowany (plan − pokrycie grantami)'">Niepokryty koszt planowany (plan − pokrycie grantami)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <div class="card shadow-sm budget-sheet" id="budget-sheet">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="budget-fs-context">
+                <span>Budżet</span>
+                <select id="budget-fs-year" class="form-select year-select" aria-label="Rok budżetu"
+                        th:attr="data-month-view=${monthView},data-edit=${editMode},data-month=${selectedMonth}">
+                    <option th:each="y : ${availableYears}"
+                            th:value="${y}"
+                            th:text="${y}"
+                            th:selected="${y == selectedYear}">2026</option>
+                </select>
+                <span th:if="${monthView}" th:text="${selectedMonthName}">Styczeń</span>
+            </div>
+            <span class="text-muted small" th:if="${editMode and monthView}">
+                Zmień kwoty w kolumnie Planowany Koszt. Wynagrodzenia i koszty administracyjne są takie same w każdym miesiącu. Kategorie edytuje się w budżecie rocznym.
+            </span>
+            <span class="text-muted small budget-edit-only" th:if="${editMode and !monthView}">
+                Kliknij kategorię, aby edytować podpozycje w oknie. Nową kategorię główną dodaj na dole listy.
+            </span>
+            <div class="d-flex align-items-center flex-wrap gap-2 ms-auto">
+            <span class="text-muted small budget-fs-hide" th:if="${backupInfo != null && backupInfo.available}">
+                    Kopia zapasowa:
+                    <span th:text="${backupInfo.createdAt != null ? #temporals.format(backupInfo.createdAt, 'dd.MM.yyyy HH:mm') : backupInfo.filename}">—</span>
+                    ·
+                    <a th:href="${monthView} ? @{__${budgetBase}__/backup/download(year=${selectedYear}, month=${selectedMonth})} : @{__${budgetBase}__/backup/download(year=${selectedYear})}"
+                       title="Pobierz ostatnią kopię — tylko do odzyskiwania danych">Pobierz kopię</a>
+            </span>
+            <span class="text-muted small budget-fs-hide" th:if="${backupInfo != null && !backupInfo.available}">
+                Brak kopii zapasowej (pierwsza zostanie utworzona automatycznie)
+            </span>
+            <a class="btn btn-sm btn-outline-secondary"
+               th:href="${monthView} ? @{__${budgetBase}__/export(year=${selectedYear}, month=${selectedMonth})} : @{__${budgetBase}__/export(year=${selectedYear})}"
+               th:title="${monthView} ? 'Pobierz tabelę tego miesiąca' : 'Pobierz tabelę tego roku'">Excel</a>
+            <a class="btn btn-sm btn-outline-primary"
+               th:if="${budgetBase != '/realizacja' and !editMode and monthView}"
+               th:href="@{__${budgetBase}__/month(year=${selectedYear}, month=${selectedMonth}, edit=true)}">Edycja</a>
+            <a class="btn btn-sm btn-primary"
+               th:if="${editMode}"
+               id="budgetFinishEditBtn"
+               th:href="${monthView} ? @{__${budgetBase}__/month(year=${selectedYear}, month=${selectedMonth})} : @{__${budgetBase}__(year=${selectedYear})}">Zakończ</a>
+            <button type="button"
+                    id="budget-toggle-detail-btn"
+                    class="btn btn-sm btn-outline-secondary budget-view-only"
+                    th:if="${!editMode or monthView}"
+                    onclick="toggleBudgetDetail()">Zwiń</button>
+            <button type="button"
+                    id="budget-fullscreen-btn"
+                    class="btn btn-sm btn-outline-secondary"
+                    aria-pressed="false"
+                    title="Pokaż budżet na pełnym ekranie"
+                    onclick="toggleBudgetFullscreen()">Pełny ekran</button>
+            </div>
+        </div>
+        <div th:replace="~{fragments/alerts :: flash-messages}"></div>
+        <div class="budget-fs-months" th:if="${monthView}">
+            <a th:href="${editMode} ? @{__${budgetBase}__(year=${selectedYear}, edit=true)} : @{__${budgetBase}__(year=${selectedYear})}">Cały rok</a>
+            <a th:each="monthLabel, stat : ${monthNames}"
+               th:href="${editMode} ? @{__${budgetBase}__/month(year=${selectedYear}, month=${stat.count}, edit=true)} : @{__${budgetBase}__/month(year=${selectedYear}, month=${stat.count})}"
+               th:classappend="${selectedMonth == stat.count} ? 'active' : ''"
+               th:text="${monthLabel}">Styczeń</a>
+        </div>
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle m-0 budget-matrix" id="budget-matrix-table">
+                <thead class="table-dark sticky-top">
+                    <tr>
+                        <th class="col-label">Pozycja / Koszt</th>
+                        <th class="text-end col-amount-header budget-view-amount-col"
+                            th:text="${budgetBase == '/realizacja'} ? 'Wydatki' : 'Planowany Koszt'">Planowany Koszt</th>
+                        <th th:each="grant : ${budgetData.grantNames}" class="text-end col-grant-header budget-view-amount-col" th:text="${grant}">Grant</th>
+                        <th class="text-end col-amount-header budget-view-amount-col">Bilans</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <th:block th:replace="~{fragments/grant-year-split :: rows(${budgetData}, ${selectedYear})}"
+                              th:unless="${budgetBase == '/realizacja'}"></th:block>
+                    <tr th:each="row : ${budgetData.displayRows}"
+                        th:class="${'budget-row-depth-' + row.depth
+                            + (row.depth > 0 ? ' budget-subrow' : '')}"
+                        th:attr="data-depth=${row.depth},
+                                 data-row-key=${row.rowKey},
+                                 data-parent-row-key=${row.parentRowKey},
+                                 data-category-root=${row.categoryRootRowKey},
+                                 data-category-id=${row.categoryTemplateId}">
+                        <td class="col-label" th:classappend="${row.depth == 0 ? 'fw-semibold' : ''}">
+                            <div class="d-flex align-items-center gap-1">
+                                <span th:if="${row.draggable && editMode && !monthView && row.depth == 0}"
+                                      class="drag-handle category-order-controls budget-edit-only"
+                                      draggable="true"
+                                      title="Przeciągnij, aby zmienić kolejność">
+                                    <span></span><span></span><span></span><span></span><span></span><span></span>
+                                </span>
+                                <button th:if="${editMode && !monthView && row.depth == 0 && row.rowKey != null}"
+                                        type="button"
+                                        class="btn btn-link budget-category-open budget-edit-only p-0"
+                                        th:attr="data-row-key=${row.rowKey}"
+                                        th:text="${row.itemName}">Kategoria</button>
+                                <a th:if="${row.linkable && (!editMode || monthView)}"
+                                   class="row-link"
+                                   th:href="${monthView} ? @{__${budgetBase}__/row(year=${selectedYear}, month=${selectedMonth}, rowKey=${row.rowKey})} : @{__${budgetBase}__/row(year=${selectedYear}, rowKey=${row.rowKey})}"
+                                   th:text="${row.itemName}">Kategoria</a>
+                                <span th:if="${(!editMode || monthView) && !row.linkable}" th:text="${row.itemName}">Kategoria</span>
+                                <button th:if="${row.depth == 0 && row.rowKey != null && (!editMode || monthView)}"
+                                        type="button"
+                                        class="btn btn-link btn-sm p-0 category-collapse-btn"
+                                        th:attr="data-row-key=${row.rowKey}"
+                                        onclick="toggleCategoryCollapse(this)">Zwiń</button>
+                                <form th:if="${editMode && !monthView && row.depth == 0 && row.categoryTemplateId != null}"
+                                      class="budget-edit-only m-0 ms-2"
+                                      th:action="@{__${budgetBase}__/categories/{id}/delete(id=${row.categoryTemplateId})}"
+                                      method="post"
+                                      onsubmit="return confirm('Usunąć tę pozycję?');">
+                                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                                    <input type="hidden" name="year" th:value="${selectedYear}"/>
+                                    <input type="hidden" name="month" th:if="${monthView}" th:value="${selectedMonth}"/>
+                                    <button type="submit" class="btn btn-outline-danger btn-sm" title="Usuń">×</button>
+                                </form>
+                            </div>
+                        </td>
+                        <td class="text-end col-amount budget-view-amount-col"
+                            th:classappend="${row.depth == 0 ? 'fw-bold' : ''}">
+                            <input th:if="${monthView and editMode and row.amountEditable}"
+                                   type="text"
+                                   inputmode="decimal"
+                                   class="form-control form-control-sm text-end budget-month-amount money-input"
+                                   th:attr="data-kind=${row.amountEditKind},data-ids=${row.amountEditIds},aria-label=${'Planowany koszt: ' + row.itemName}"
+                                   th:value="${row.totalCost != null ? #numbers.formatDecimal(row.totalCost, 1, 'WHITESPACE', 2, 'COMMA') : '0,00'}"/>
+                            <span th:unless="${monthView and editMode and row.amountEditable}"
+                                  th:text="${row.totalCost != null && row.totalCost > 0 ? #numbers.formatDecimal(row.totalCost, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0.00</span>
+                        </td>
+                        <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount budget-view-amount-col"
+                            th:text="${row.coverageByGrant.get(grant) != null && row.coverageByGrant.get(grant) > 0 ? #numbers.formatDecimal(row.coverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+                        <td class="text-end col-amount budget-view-amount-col" th:classappend="${row.balance != null && row.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
+                            th:text="${row.balance != null ? #numbers.formatDecimal(row.balance, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0.00</td>
+                    </tr>
+                    <tr class="table-secondary fw-semibold budget-totals-row">
+                        <td class="col-label" th:text="${budgetBase == '/realizacja'} ? 'Razem' : 'Razem (plan)'">Razem (plan)</td>
+                        <td class="text-end col-amount" th:text="${#numbers.formatDecimal(budgetData.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                        <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
+                            th:text="${budgetData.totalCoverageByGrant.get(grant) != null && budgetData.totalCoverageByGrant.get(grant).signum() > 0 ? #numbers.formatDecimal(budgetData.totalCoverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+                        <td class="text-end col-amount"
+                            th:classappend="${budgetData.balance != null && budgetData.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
+                            th:text="${#numbers.formatDecimal(budgetData.balance, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                    </tr>
+                    <tr class="budget-edit-block" th:if="${!monthView}">
+                        <td colspan="100">
+                            <form class="d-flex flex-wrap align-items-center gap-2 py-1"
+                                  th:action="@{__${budgetBase}__/categories}"
+                                  method="post">
+                                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                                <input type="hidden" name="year" th:value="${selectedYear}"/>
+                                <input type="hidden" name="month" th:if="${monthView}" th:value="${selectedMonth}"/>
+                                <input class="form-control form-control-sm" name="name" placeholder="Nowa kategoria główna" style="max-width: 18rem;" required/>
+                                <button type="submit" class="btn btn-sm btn-outline-primary">Dodaj kategorię</button>
+                            </form>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div th:replace="~{fragments/footer :: budget-footer}"></div>
+
+<div class="modal fade" id="budgetStructureModal" tabindex="-1" aria-hidden="true" th:if="${editMode and !monthView}">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title">Struktura budżetu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <div class="modal-body" id="budgetStructureModalBody">
+                <div class="text-muted small">Wybierz kategorię z listy…</div>
+            </div>
+            <div class="modal-footer py-2 d-none" id="budgetStructureModalFooter">
+                <button type="button" class="btn btn-primary btn-sm" id="budgetStructureSaveBtn">Zapisz</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="budget-selected-month" th:if="${monthView}" th:value="${selectedMonth}"/>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script th:inline="javascript">
+    const budgetBase = /*[[${budgetBase}]]*/ '/dashboard';
+    const budgetSelectedMonth = document.getElementById('budget-selected-month')?.value || '';
+    const budgetEditMode = /*[[${editMode}]]*/ false;
+    const budgetCsrfToken = /*[[${_csrf != null ? _csrf.token : ''}]]*/ '';
+    const budgetCsrfParameter = /*[[${_csrf != null ? _csrf.parameterName : '_csrf'}]]*/ '_csrf';
+
+    let budgetStructureModal = null;
+
+    function hideStructureSaveButton() {
+        document.getElementById('budgetStructureModalFooter')?.classList.add('d-none');
+    }
+
+    function showStructureSaveButton() {
+        document.getElementById('budgetStructureModalFooter')?.classList.remove('d-none');
+    }
+
+    function closeStructureModalAndRefresh() {
+        hideStructureSaveButton();
+        budgetStructureModal?.hide();
+        const url = new URL(window.location.href);
+        url.searchParams.set('edit', 'true');
+        rememberBudgetFullscreen();
+        window.location.href = url.toString();
+    }
+
+    function toggleGrantYearSplit(button) {
+        const table = button.closest('table');
+        const rows = table.querySelectorAll('tr.grant-year-split');
+        const open = rows.length > 0 && !rows[0].classList.contains('d-none');
+        rows.forEach(row => row.classList.toggle('d-none', open));
+        button.textContent = open ? 'Rozwiń' : 'Zwiń';
+    }
+
+    const budgetCollapseKey = 'budgetCollapsedCategories';
+
+    function budgetCategoryKeys() {
+        return [...document.querySelectorAll('#budget-matrix-table tr.budget-row-depth-0[data-row-key]')]
+            .map(row => row.dataset.rowKey)
+            .filter(key => key && document.querySelector(`#budget-matrix-table tr.budget-subrow[data-category-root="${CSS.escape(key)}"]`));
+    }
+
+    function readCollapsedCategories() {
+        try {
+            const raw = localStorage.getItem(budgetCollapseKey);
+            if (raw == null) {
+                return null;
+            }
+            const parsed = JSON.parse(raw);
+            return new Set(Array.isArray(parsed) ? parsed : []);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writeCollapsedCategories(keys) {
+        localStorage.setItem(budgetCollapseKey, JSON.stringify([...keys]));
+    }
+
+    function applyCategoryCollapsed(rowKey, collapsed) {
+        document.querySelectorAll(`#budget-matrix-table tr.budget-subrow[data-category-root="${CSS.escape(rowKey)}"]`)
+            .forEach(row => row.classList.toggle('is-collapsed', collapsed));
+        const button = document.querySelector(`#budget-matrix-table .category-collapse-btn[data-row-key="${CSS.escape(rowKey)}"]`);
+        if (button) {
+            button.textContent = collapsed ? 'Rozwiń' : 'Zwiń';
+        }
+    }
+
+    function syncGlobalCollapseButton(collapsed) {
+        const button = document.getElementById('budget-toggle-detail-btn');
+        if (!button) {
+            return;
+        }
+        const keys = budgetCategoryKeys();
+        const allCollapsed = keys.length > 0 && keys.every(key => collapsed.has(key));
+        button.textContent = allCollapsed ? 'Rozwiń' : 'Zwiń';
+    }
+
+    function initCategoryCollapse() {
+        const stored = readCollapsedCategories();
+        const collapsed = stored == null ? new Set() : stored;
+        budgetCategoryKeys().forEach(key => applyCategoryCollapsed(key, collapsed.has(key)));
+        document.querySelectorAll('#budget-matrix-table .category-collapse-btn').forEach(button => {
+            const key = button.dataset.rowKey;
+            if (!document.querySelector(`#budget-matrix-table tr.budget-subrow[data-category-root="${CSS.escape(key)}"]`)) {
+                button.remove();
+            }
+        });
+        syncGlobalCollapseButton(collapsed);
+    }
+
+    function toggleCategoryCollapse(button) {
+        const key = button.dataset.rowKey;
+        const collapsed = readCollapsedCategories() || new Set();
+        const willCollapse = !collapsed.has(key);
+        if (willCollapse) {
+            collapsed.add(key);
+        } else {
+            collapsed.delete(key);
+        }
+        writeCollapsedCategories(collapsed);
+        applyCategoryCollapsed(key, willCollapse);
+        syncGlobalCollapseButton(collapsed);
+    }
+
+    function toggleBudgetDetail() {
+        const keys = budgetCategoryKeys();
+        const collapsed = readCollapsedCategories() || new Set();
+        const allCollapsed = keys.length > 0 && keys.every(key => collapsed.has(key));
+        const next = new Set();
+        if (!allCollapsed) {
+            keys.forEach(key => next.add(key));
+        }
+        writeCollapsedCategories(next);
+        keys.forEach(key => applyCategoryCollapsed(key, next.has(key)));
+        syncGlobalCollapseButton(next);
+    }
+
+    initCategoryCollapse();
+
+    let keepFullscreenAcrossNavigation = false;
+
+    function isBudgetFullscreen() {
+        return document.documentElement.classList.contains('budget-fullscreen');
+    }
+
+    function isDashboardHref(href) {
+        try {
+            const path = new URL(href, window.location.origin).pathname;
+            return path === budgetBase || path === budgetBase + '/month';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function rememberBudgetFullscreen() {
+        if (!isBudgetFullscreen()) {
+            return;
+        }
+        keepFullscreenAcrossNavigation = true;
+        try {
+            sessionStorage.setItem('budgetFullscreen', '1');
+        } catch (e) {}
+    }
+    window.rememberBudgetFullscreen = rememberBudgetFullscreen;
+
+    function syncFullscreenButton() {
+        const on = isBudgetFullscreen();
+        const btn = document.getElementById('budget-fullscreen-btn');
+        if (!btn) {
+            return;
+        }
+        btn.textContent = on ? 'Zamknij' : 'Pełny ekran';
+        btn.title = on ? 'Wyjdź z pełnego ekranu' : 'Pokaż budżet na pełnym ekranie';
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+
+    function setBudgetFullscreen(on) {
+        document.documentElement.classList.toggle('budget-fullscreen', on);
+        try {
+            if (on) {
+                sessionStorage.setItem('budgetFullscreen', '1');
+            } else {
+                sessionStorage.removeItem('budgetFullscreen');
+            }
+        } catch (e) {}
+        syncFullscreenButton();
+    }
+
+    function requestDocumentFullscreen() {
+        const root = document.documentElement;
+        const request = root.requestFullscreen || root.webkitRequestFullscreen;
+        if (!request || document.fullscreenElement || document.webkitFullscreenElement) {
+            return Promise.resolve();
+        }
+        try {
+            return Promise.resolve(request.call(root));
+        } catch (e) {
+            return Promise.reject(e);
+        }
+    }
+
+    function exitDocumentFullscreen() {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (!exit || !(document.fullscreenElement || document.webkitFullscreenElement)) {
+            return Promise.resolve();
+        }
+        try {
+            return Promise.resolve(exit.call(document));
+        } catch (e) {
+            return Promise.reject(e);
+        }
+    }
+
+    function toggleBudgetFullscreen() {
+        if (isBudgetFullscreen()) {
+            setBudgetFullscreen(false);
+            exitDocumentFullscreen();
+            return;
+        }
+        setBudgetFullscreen(true);
+        requestDocumentFullscreen().catch(() => {});
+    }
+
+    function onFullscreenApiExit() {
+        if (document.fullscreenElement || document.webkitFullscreenElement || !isBudgetFullscreen()) {
+            return;
+        }
+        if (keepFullscreenAcrossNavigation || document.visibilityState === 'hidden') {
+            return;
+        }
+        setBudgetFullscreen(false);
+    }
+
+    document.addEventListener('fullscreenchange', onFullscreenApiExit);
+    document.addEventListener('webkitfullscreenchange', onFullscreenApiExit);
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || !isBudgetFullscreen() || document.fullscreenElement || document.webkitFullscreenElement) {
+            return;
+        }
+        if (document.querySelector('.modal.show')) {
+            return;
+        }
+        setBudgetFullscreen(false);
+    });
+    document.addEventListener('click', (event) => {
+        const link = event.target.closest('a[href]');
+        if (!link || link.target === '_blank' || !isBudgetFullscreen()) {
+            return;
+        }
+        const href = link.getAttribute('href') || '';
+        if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
+            return;
+        }
+        if (isDashboardHref(href)) {
+            rememberBudgetFullscreen();
+        }
+    }, true);
+    document.addEventListener('submit', (event) => {
+        const action = event.target?.getAttribute?.('action') || '';
+        if (action.includes(budgetBase)) {
+            rememberBudgetFullscreen();
+        }
+    }, true);
+    document.getElementById('budget-fs-year')?.addEventListener('change', (event) => {
+        const year = event.target.value;
+        if (!year) {
+            return;
+        }
+        rememberBudgetFullscreen();
+        const params = new URLSearchParams({ year });
+        if (event.target.dataset.edit === 'true') {
+            params.set('edit', 'true');
+        }
+        if (event.target.dataset.monthView === 'true') {
+            params.set('month', event.target.dataset.month);
+            window.location.href = budgetBase + '/month?' + params.toString();
+            return;
+        }
+        window.location.href = budgetBase + '?' + params.toString();
+    });
+    syncFullscreenButton();
+
+    async function loadStructureNode(rowKey) {
+        const params = new URLSearchParams({ year: String(budgetDashboardYear), rowKey });
+        const response = await fetch(budgetBase + '/structure/node?' + params.toString());
+        if (!response.ok) {
+            return;
+        }
+        const html = await response.text();
+        const body = document.getElementById('budgetStructureModalBody');
+        if (body) {
+            body.innerHTML = html;
+            window.formatMoneyInputs?.(body);
+            bindStructurePanelEvents(body);
+        }
+    }
+
+    function openStructureModal(rowKey) {
+        if (!budgetStructureModal) {
+            const modalEl = document.getElementById('budgetStructureModal');
+            if (modalEl) {
+                budgetStructureModal = new bootstrap.Modal(modalEl);
+            }
+            document.getElementById('budgetStructureSaveBtn')?.addEventListener('click', closeStructureModalAndRefresh);
+        }
+        hideStructureSaveButton();
+        loadStructureNode(rowKey).then(() => budgetStructureModal?.show());
+    }
+
+    async function submitStructureAddForm(form) {
+        await fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+            redirect: 'manual'
+        });
+        const panel = form.closest('#budget-structure-panel');
+        const rowKey = panel?.dataset.rowKey;
+        const nameInput = form.querySelector('input[name="name"]');
+        if (nameInput) {
+            nameInput.value = '';
+        }
+        if (rowKey) {
+            await loadStructureNode(rowKey);
+        }
+        showStructureSaveButton();
+    }
+
+    async function submitStructureDeleteForm(form) {
+        await fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+            redirect: 'manual'
+        });
+        const panel = form.closest('#budget-structure-panel');
+        const rowKey = panel?.dataset.rowKey;
+        if (rowKey) {
+            await loadStructureNode(rowKey);
+        }
+        showStructureSaveButton();
+    }
+
+    async function saveStructureAmount(input) {
+        const body = new URLSearchParams();
+        body.append(budgetCsrfParameter, budgetCsrfToken);
+        body.append('parentRowKey', input.dataset.parentRowKey || '');
+        body.append('rowKey', input.dataset.rowKey || '');
+        body.append('amount', input.value || '');
+        body.append('year', String(budgetDashboardYear));
+        await fetch(budgetBase + '/structure/amount', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: body.toString()
+        });
+    }
+
+    function bindStructurePanelEvents(root) {
+        root.querySelectorAll('.budget-structure-open').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const key = btn.dataset.rowKey;
+                if (key) {
+                    loadStructureNode(key);
+                }
+            });
+        });
+        root.querySelector('.budget-structure-close-root')?.addEventListener('click', () => {
+            budgetStructureModal?.hide();
+        });
+        root.querySelectorAll('.budget-structure-amount').forEach(input => {
+            input.addEventListener('change', () => saveStructureAmount(input));
+        });
+        root.querySelectorAll('.budget-structure-add-form').forEach(form => {
+            form.addEventListener('submit', event => {
+                event.preventDefault();
+                submitStructureAddForm(form);
+            });
+        });
+        root.querySelectorAll('.budget-structure-delete-form').forEach(form => {
+            form.addEventListener('submit', event => {
+                event.preventDefault();
+                if (!confirm('Usunąć tę pozycję?')) {
+                    return;
+                }
+                submitStructureDeleteForm(form);
+            });
+        });
+    }
+
+    if (budgetEditMode) {
+        document.querySelectorAll('.budget-category-open').forEach(btn => {
+            btn.addEventListener('click', () => openStructureModal(btn.dataset.rowKey));
+        });
+    }
+
+    document.querySelectorAll('.budget-month-amount').forEach(input => {
+        input.addEventListener('change', async () => {
+            if (!budgetSelectedMonth) {
+                return;
+            }
+            const body = new URLSearchParams();
+            body.append(budgetCsrfParameter, budgetCsrfToken);
+            body.append('year', String(budgetDashboardYear));
+            body.append('month', String(budgetSelectedMonth));
+            body.append('kind', input.dataset.kind || '');
+            body.append('ids', input.dataset.ids || '');
+            body.append('amount', input.value || '0');
+            input.disabled = true;
+            try {
+                const response = await fetch(budgetBase + '/month/amount', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                    body: body.toString()
+                });
+                if (!response.ok) {
+                    input.disabled = false;
+                    alert(await response.text());
+                    return;
+                }
+                window.location.reload();
+            } catch (e) {
+                input.disabled = false;
+                alert('Nie udało się zapisać kwoty');
+            }
+        });
+    });
+
+    (function initCategoryDragDrop() {
+        if (!budgetEditMode) {
+            return;
+        }
+        const tbody = document.querySelector('#budget-matrix-table tbody');
+        if (!tbody) {
+            return;
+        }
+        let draggedAnchor = null;
+
+        tbody.querySelectorAll('.drag-handle').forEach(handle => {
+            handle.addEventListener('dragstart', event => {
+                draggedAnchor = handle.closest('tr[data-depth="0"]');
+                if (draggedAnchor) {
+                    draggedAnchor.classList.add('budget-row-dragging');
+                }
+                event.dataTransfer.effectAllowed = 'move';
+            });
+            handle.addEventListener('dragend', () => {
+                draggedAnchor?.classList.remove('budget-row-dragging');
+                draggedAnchor = null;
+            });
+        });
+
+        tbody.addEventListener('dragover', event => {
+            if (!draggedAnchor) {
+                return;
+            }
+            const target = event.target.closest('tr[data-depth="0"]');
+            if (!target || target === draggedAnchor) {
+                return;
+            }
+            event.preventDefault();
+        });
+
+        tbody.addEventListener('drop', async event => {
+            event.preventDefault();
+            if (!draggedAnchor) {
+                return;
+            }
+            const target = event.target.closest('tr[data-depth="0"]');
+            draggedAnchor.classList.remove('budget-row-dragging');
+            if (!target || target === draggedAnchor) {
+                draggedAnchor = null;
+                return;
+            }
+            const targetRect = target.getBoundingClientRect();
+            const before = event.clientY < targetRect.top + targetRect.height / 2;
+            if (before) {
+                tbody.insertBefore(draggedAnchor, target);
+            } else {
+                tbody.insertBefore(draggedAnchor, target.nextElementSibling);
+            }
+            draggedAnchor = null;
+
+            const body = new URLSearchParams();
+            body.append(budgetCsrfParameter, budgetCsrfToken);
+            body.append('year', String(budgetDashboardYear));
+            body.append('edit', 'true');
+            tbody.querySelectorAll('tr[data-depth="0"][data-category-id]').forEach(tr => {
+                body.append('categoryId', tr.dataset.categoryId);
+            });
+            await fetch(budgetBase + '/categories/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                body: body.toString()
+            });
+        });
+    })();
+</script>
+</body>
+</html>

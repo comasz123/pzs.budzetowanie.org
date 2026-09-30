@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <th:block th:replace="~{fragments/favicon :: favicon}"></th:block>
+    <title th:text="|Nowy budżet ${fiscalYear} – podsumowanie|">Podsumowanie</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        .wizard-scroll {
+            max-height: calc(100vh - 16rem);
+            overflow-y: auto;
+        }
+        .budget-row-depth-0 td:first-child { font-weight: 600; }
+        .budget-row-depth-1 td:first-child { padding-left: 1.25rem; font-weight: 500; }
+        .budget-row-depth-2 td:first-child { padding-left: 2rem; font-size: 0.875rem; color: #495057; }
+    </style>
+</head>
+<body class="bg-light">
+<div class="container-fluid px-4 py-3">
+    <div th:replace="~{fragments/admin :: header('Nowy budżet', ${activeSection})}"></div>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h4 mb-1" th:text="|Budżet ${fiscalYear}|">Budżet 2027</h1>
+            <p class="text-muted small mb-0">Krok 14 — podsumowanie roczne. Wszystkie kategorie i pozycje.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm"
+               th:href="@{__${adminBase}__/budget/new/{year}/month/12(year=${fiscalYear})}">← Grudzień</a>
+            <a class="btn btn-outline-secondary btn-sm"
+               th:href="@{__${adminBase}__/budget/new/{year}/review/export(year=${fiscalYear})}">Excel</a>
+            <a class="btn btn-primary btn-sm" th:href="@{__${budgetBase}__(year=${fiscalYear})}">Przejdź do dashboardu</a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-primary border-4">
+                <div class="card-body">
+                    <div class="text-muted small">Całkowity koszt planowany</div>
+                    <div class="fs-4 fw-bold"
+                         th:text="${#numbers.formatDecimal(dashboard.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white fw-semibold">Pełny budżet roczny</div>
+        <div class="card-body p-0 wizard-scroll table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light sticky-top">
+                <tr>
+                    <th>Pozycja</th>
+                    <th class="text-end" style="width: 10rem;">Planowany koszt</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="row : ${dashboard.displayRows}"
+                    th:class="|budget-row-depth-${row.depth}|">
+                    <td th:text="${row.itemName}">Pozycja</td>
+                    <td class="text-end"
+                        th:text="${#numbers.formatDecimal(row.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
+                </tr>
+                </tbody>
+                <tfoot class="table-light">
+                <tr>
+                    <th>Razem</th>
+                    <th class="text-end"
+                        th:text="${#numbers.formatDecimal(dashboard.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</th>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+<div th:replace="~{fragments/footer :: budget-footer}"></div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

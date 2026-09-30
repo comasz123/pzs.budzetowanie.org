@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <th:block th:replace="~{fragments/favicon :: favicon}"></th:block>
+    <title>Granty</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-light">
+<div class="container-fluid px-4 py-3">
+    <div th:replace="~{fragments/admin :: header('Granty', ${activeSection})}"></div>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <p class="text-muted mb-0">Lista grantów w systemie · rok budżetowy <span class="fw-semibold" th:text="${fiscalYear}">2026</span></p>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm" th:href="@{__${adminBase}__/grants/export(year=${fiscalYear})}">Excel</a>
+            <a class="btn btn-primary btn-sm" th:href="@{__${adminBase}__/grants/new}">Dodaj grant</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                <tr>
+                    <th>Kod</th>
+                    <th>Nazwa</th>
+                    <th>Sponsor</th>
+                    <th>Projekt</th>
+                    <th>Czas trwania</th>
+                    <th class="text-end">Całkowity budżet</th>
+                    <th class="text-end" th:text="|Alokowane w ${fiscalYear}|">Alokowane w roku</th>
+                    <th class="text-end">Pozostało</th>
+                    <th>Aktywny</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="row : ${grantRows}" th:with="grant=${row.grant}">
+                    <td>
+                        <a th:href="@{__${adminBase}__/grants/{id}/budget(id=${grant.id})}"
+                           th:text="${grant.code}">KOD</a>
+                    </td>
+                    <td th:text="${grant.name}">Nazwa</td>
+                    <td th:text="${grant.sponsor != null ? grant.sponsor.name : '-'}">Sponsor</td>
+                    <td th:text="${grant.project != null ? grant.project.name : '-'}">Projekt</td>
+                    <td class="text-nowrap small">
+                        <span th:if="${grant.startDate != null}" th:text="${#temporals.format(grant.startDate, 'dd.MM.yyyy')}">01.01.2026</span>
+                        <span th:if="${grant.startDate == null}">-</span>
+                        <span class="text-muted"> – </span>
+                        <span th:if="${grant.endDate != null}" th:text="${#temporals.format(grant.endDate, 'dd.MM.yyyy')}">31.12.2026</span>
+                        <span th:if="${grant.endDate == null}">-</span>
+                    </td>
+                    <td class="text-end" th:text="${grant.totalAmount != null && grant.totalAmount.signum() > 0 ? #numbers.formatDecimal(grant.totalAmount, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0</td>
+                    <td class="text-end" th:text="${row.allocatedInYear != null ? #numbers.formatDecimal(row.allocatedInYear, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0</td>
+                    <td class="text-end"
+                        th:classappend="${row.remaining != null && row.remaining.signum() < 0} ? 'text-danger fw-semibold' : ''"
+                        th:text="${row.remaining != null ? #numbers.formatDecimal(row.remaining, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0</td>
+                    <td>
+                        <span class="badge" th:classappend="${grant.active} ? 'bg-success' : 'bg-secondary'"
+                              th:text="${grant.active} ? 'Tak' : 'Nie'">Tak</span>
+                    </td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(grantRows)}">
+                    <td colspan="9" class="text-muted text-center py-4">Brak grantów. Dodaj pierwszy grant.</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div th:replace="~{fragments/footer :: budget-footer}"></div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

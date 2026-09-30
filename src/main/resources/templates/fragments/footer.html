@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<footer th:fragment="budget-footer" class="budget-footer mt-5 py-4 border-top bg-white">
+    <div class="container-fluid px-4 text-center text-muted small">
+        <div class="d-flex flex-column flex-md-row align-items-center justify-content-center gap-2 gap-md-3">
+            <span>stworzone w całości przez</span>
+            <a href="https://tjterlecki.pl"
+               class="d-inline-flex align-items-center" title="VERDE">
+                <img th:src="@{/images/verde-logo.png}" src="/images/verde-logo.png"
+                     alt="VERDE" height="32">
+            </a>
+        </div>
+        <div class="mt-2" th:text="|© ${T(java.time.Year).now()} All rights reserved.|">© 2026 All rights reserved.</div>
+    </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <th:block th:replace="~{fragments/favicon :: favicon}"></th:block>
+    <title>Wydatki</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        .wydatki-table { font-size: 0.8125rem; }
+        .wydatki-table .form-select,
+        .wydatki-table .form-control { font-size: 0.8125rem; }
+    </style>
+</head>
+<body class="bg-light">
+<div class="container-fluid px-4 py-3">
+    <div th:replace="~{fragments/admin :: header('Wydatki', ${activeSection})}"></div>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <p class="text-muted mb-0">Wydatki zaimportowane z Excel · rok</p>
+            <div class="btn-group btn-group-sm" role="group">
+                <a th:each="y : ${availableYears}"
+                   class="btn"
+                   th:classappend="${fiscalYear == y} ? 'btn-primary' : 'btn-outline-secondary'"
+                   th:href="@{__${expenditureBase}__(year=${y}, month=${selectedMonth})}"
+                   th:text="${y}">2026</a>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-secondary btn-sm"
+               th:href="@{__${expenditureBase}__/export(year=${fiscalYear}, month=${selectedMonth})}">Excel</a>
+            <a class="btn btn-outline-secondary btn-sm" th:href="@{__${expenditureBase}__/sample(year=2025)}">
+                wydatki-2025.xlsx
+            </a>
+            <a class="btn btn-outline-secondary btn-sm" th:href="@{__${expenditureBase}__/sample(year=2026)}">
+                wydatki-2026.xlsx
+            </a>
+            <a class="btn btn-primary btn-sm"
+               th:href="@{__${expenditureBase}__/import(year=${fiscalYear}, month=${selectedMonth})}">
+                Importuj miesiąc
+            </a>
+        </div>
+    </div>
+
+    <div th:replace="~{fragments/alerts :: flash-messages}"></div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <span class="text-muted small me-1">Miesiąc:</span>
+                <a th:each="label, stat : ${monthNames}"
+                   class="btn btn-sm"
+                   th:classappend="${selectedMonth == stat.count} ? 'btn-primary' : 'btn-outline-secondary'"
+                   th:href="${editMode} ? @{__${expenditureBase}__(year=${fiscalYear}, month=${stat.count}, edit=true)} : @{__${expenditureBase}__(year=${fiscalYear}, month=${stat.count})}"
+                   th:text="${label + ' (' + countsByMonth[stat.count] + ')'}">Styczeń</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <span>
+                <span th:text="${monthNames[selectedMonth - 1]}">Styczeń</span>
+                <span th:text="${fiscalYear}">2026</span>
+                — <span th:text="${totalInMonth}">0</span> pozycji
+            </span>
+            <a th:unless="${editMode}" class="btn btn-sm btn-outline-primary"
+               th:href="@{__${expenditureBase}__(year=${fiscalYear}, month=${selectedMonth}, edit=true)}">Edycja</a>
+            <a th:if="${editMode}" class="btn btn-sm btn-outline-secondary"
+               th:href="@{__${expenditureBase}__(year=${fiscalYear}, month=${selectedMonth})}">Zakończ</a>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle wydatki-table">
+                <thead class="table-light">
+                <tr>
+                    <th>Nr dokumentu</th>
+                    <th>Data wystawienia</th>
+                    <th>Data płatności</th>
+                    <th>Opis</th>
+                    <th>Kategoria</th>
+                    <th class="text-end">Netto</th>
+                    <th class="text-end">Brutto</th>
+                    <th>Grant</th>
+                    <th>Projekt</th>
+                    <th th:if="${editMode}"></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:if="${expenditures.isEmpty()}">
+                    <td class="text-muted text-center py-4" th:colspan="${editMode} ? 10 : 9">
+                        Brak wydatków w tym miesiącu.
+                        <a th:href="@{__${expenditureBase}__/import(year=${fiscalYear}, month=${selectedMonth})}">
+                            Importuj z Excel
+                        </a>
+                    </td>
+                </tr>
+                <th:block th:each="exp : ${expenditures}">
+                <tr>
+                    <td th:text="${exp.documentNumber}">FV/2026/0001</td>
+                    <td th:text="${exp.issueDate}">2026-01-15</td>
+                    <td th:text="${exp.paymentDate} ?: '—'">2026-01-20</td>
+                    <td th:text="${exp.description}">Opis</td>
+                    <td th:text="${exp.budgetItem.code}">KOSZT_ADM</td>
+                    <td class="text-end" th:text="${#numbers.formatDecimal(exp.netAmount, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
+                    <td class="text-end" th:text="${#numbers.formatDecimal(exp.grossAmount, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
+                    <td>
+                        <div th:if="${!exp.grantShares.isEmpty()}">
+                            <div th:each="share : ${exp.grantShares}" class="text-nowrap">
+                                <span th:text="${share.grant.code}">KOD</span>
+                                <span class="text-muted"
+                                      th:text="${#numbers.formatDecimal(share.amount, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</span>
+                            </div>
+                        </div>
+                        <span th:if="${exp.grantShares.isEmpty() and !editMode}" th:text="${exp.grant.code}">KOD</span>
+                        <form th:if="${exp.grantShares.isEmpty() and editMode}" method="post" th:action="@{__${expenditureBase}__/{id}/grant(id=${exp.id})}">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <input type="hidden" name="year" th:value="${fiscalYear}"/>
+                            <input type="hidden" name="month" th:value="${selectedMonth}"/>
+                            <input type="hidden" name="edit" value="true"/>
+                            <select class="form-select form-select-sm" name="grantId" onchange="this.form.submit()" aria-label="Grant">
+                                <option th:each="grant : ${grants}"
+                                        th:value="${grant.id}"
+                                        th:text="${grant.code}"
+                                        th:title="${grant.name}"
+                                        th:selected="${grant.id == exp.grant.id}">KOD</option>
+                            </select>
+                        </form>
+                    </td>
+                    <td th:with="projectName=${exp.project != null ? exp.project.name : (exp.grant.project != null ? exp.grant.project.name : '—')}, projectId=${exp.project != null ? exp.project.id : (exp.grant.project != null ? exp.grant.project.id : null)}">
+                        <span th:unless="${editMode}" th:text="${projectName}">Projekt</span>
+                        <form th:if="${editMode}" method="post" th:action="@{__${expenditureBase}__/{id}/project(id=${exp.id})}">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <input type="hidden" name="year" th:value="${fiscalYear}"/>
+                            <input type="hidden" name="month" th:value="${selectedMonth}"/>
+                            <input type="hidden" name="edit" value="true"/>
+                            <select class="form-select form-select-sm" name="projectId" onchange="this.form.submit()" aria-label="Projekt">
+                                <option th:each="project : ${projects}"
+                                        th:value="${project.id}"
+                                        th:text="${project.name}"
+                                        th:selected="${projectId != null and project.id == projectId}">Projekt</option>
+                            </select>
+                        </form>
+                    </td>
+                    <td th:if="${editMode}" class="text-end">
+                        <a class="btn btn-sm"
+                           th:classappend="${splitId == exp.id} ? 'btn-primary' : 'btn-outline-secondary'"
+                           th:href="@{__${expenditureBase}__(year=${fiscalYear}, month=${selectedMonth}, edit=true, split=${exp.id})}">Split</a>
+                    </td>
+                </tr>
+                <tr th:if="${editMode and splitId == exp.id}">
+                    <td colspan="10" class="bg-light">
+                        <form class="split-form py-2" method="post"
+                              th:action="@{__${expenditureBase}__/{id}/split(id=${exp.id})}"
+                              th:attr="data-gross=${exp.grossAmount}"
+                              th:with="shareCount=${exp.grantShares.size()}">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <input type="hidden" name="year" th:value="${fiscalYear}"/>
+                            <input type="hidden" name="month" th:value="${selectedMonth}"/>
+                            <input type="hidden" name="parts" th:value="${shareCount == 3 ? 3 : 2}"/>
+                            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                <span class="text-muted">Pozycje</span>
+                                <button type="button" class="btn btn-sm"
+                                        th:classappend="${shareCount != 3 ? 'btn-primary' : 'btn-outline-secondary'}"
+                                        data-count="2" onclick="setSplitParts(this, 2)">2</button>
+                                <button type="button" class="btn btn-sm"
+                                        th:classappend="${shareCount == 3 ? 'btn-primary' : 'btn-outline-secondary'}"
+                                        data-count="3" onclick="setSplitParts(this, 3)">3</button>
+                                <span class="text-muted">
+                                    Suma brutto
+                                    <span th:text="${#numbers.formatDecimal(exp.grossAmount, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</span>
+                                </span>
+                            </div>
+                            <div class="row g-2 align-items-center mb-2" th:each="i : ${#numbers.sequence(1, 3)}"
+                                 th:attr="data-part=${i}"
+                                 th:classappend="${i == 3 and shareCount != 3 ? 'd-none' : ''}"
+                                 th:with="share=${i <= shareCount ? exp.grantShares[i - 1] : null}">
+                                <div class="col-md-5">
+                                    <select class="form-select form-select-sm" name="grantId" aria-label="Grant">
+                                        <option value="">— grant —</option>
+                                        <option th:each="grant : ${grants}"
+                                                th:value="${grant.id}"
+                                                th:text="${grant.code}"
+                                                th:title="${grant.name}"
+                                                th:selected="${(share != null and grant.id == share.grant.id) or (share == null and i == 1 and grant.id == exp.grant.id)}">KOD</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <input class="form-control form-control-sm" name="amount" inputmode="decimal"
+                                           placeholder="Kwota brutto"
+                                           th:value="${share != null ? share.amount : ''}"/>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-sm btn-primary">Zapisz podział</button>
+                        </form>
+                        <form th:if="${!exp.grantShares.isEmpty()}" method="post" class="mt-2"
+                              th:action="@{__${expenditureBase}__/{id}/split/clear(id=${exp.id})}">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <input type="hidden" name="year" th:value="${fiscalYear}"/>
+                            <input type="hidden" name="month" th:value="${selectedMonth}"/>
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Usuń podział</button>
+                        </form>
+                    </td>
+                </tr>
+                </th:block>
+                </tbody>
+                <tfoot th:unless="${expenditures.isEmpty()}">
+                <tr class="table-secondary fw-semibold">
+                    <td colspan="5">Razem</td>
+                    <td class="text-end" th:text="${#numbers.formatDecimal(totalNet, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
+                    <td class="text-end" th:text="${#numbers.formatDecimal(totalGross, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
+                    <td></td>
+                    <td></td>
+                    <td th:if="${editMode}"></td>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+    function setSplitParts(button, count) {
+        const form = button.closest('form');
+        form.querySelector('[name=parts]').value = count;
+        form.querySelectorAll('[data-part]').forEach(function (row) {
+            row.classList.toggle('d-none', Number(row.dataset.part) > count);
+        });
+        button.parentElement.querySelectorAll('button[data-count]').forEach(function (item) {
+            const active = Number(item.dataset.count) === count;
+            item.classList.toggle('btn-primary', active);
+            item.classList.toggle('btn-outline-secondary', !active);
+        });
+        fillSplitAmounts(form, count, true);
+    }
+
+    function fillSplitAmounts(form, count, force) {
+        const cents = Math.round(Number(form.dataset.gross) * 100);
+        if (!Number.isFinite(cents)) {
+            return;
+        }
+        const inputs = [];
+        form.querySelectorAll('[data-part]').forEach(function (row) {
+            if (Number(row.dataset.part) <= count) {
+                inputs.push(row.querySelector('input[name=amount]'));
+            }
+        });
+        if (!force && inputs.some(function (input) { return input.value !== ''; })) {
+            return;
+        }
+        const base = Math.floor(cents / count);
+        let used = 0;
+        inputs.forEach(function (input, index) {
+            const part = index === inputs.length - 1 ? cents - used : base;
+            used += part;
+            input.value = (part / 100).toFixed(2);
+        });
+    }
+
+    document.querySelectorAll('form.split-form').forEach(function (form) {
+        fillSplitAmounts(form, Number(form.querySelector('[name=parts]').value), false);
+    });
+</script>
+</body>
+</html>

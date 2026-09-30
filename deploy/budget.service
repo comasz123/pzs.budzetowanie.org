@@ -1,0 +1,27 @@
+[Unit]
+Description=Budget NGO (Spring Boot)
+Documentation=https://github.com/tomaszterlecki/budget
+After=network-online.target mariadb.service
+Wants=network-online.target
+Requires=mariadb.service
+
+[Service]
+Type=simple
+User=tomaszt
+Group=tomaszt
+WorkingDirectory=/var/www/ngo.budzetowanie.pl
+
+ExecStart=/usr/bin/java -jar /var/www/ngo.budzetowanie.pl/budget-0.0.1-SNAPSHOT.jar
+SuccessExitStatus=143
+
+Restart=on-failure
+RestartSec=10
+
+# Logi: journalctl -u budget -f  (+ nadal możesz tail app.log jeśli Spring loguje do pliku)
+StandardOutput=append:/var/www/ngo.budzetowanie.pl/app.log
+StandardError=append:/var/www/ngo.budzetowanie.pl/app.log
+
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

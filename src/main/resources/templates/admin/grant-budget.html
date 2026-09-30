@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <th:block th:replace="~{fragments/favicon :: favicon}"></th:block>
+    <title th:text="|Budżet grantu ${grantBudget.grantCode}|">Budżet grantu</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script th:src="@{/js/money-input.js}"></script>
+    <style>
+        .grant-budget-table input.money-input {
+            min-width: 6.5rem;
+            text-align: right;
+        }
+        .grant-budget-table select.form-select {
+            min-width: 22rem;
+        }
+        .grant-budget-table td {
+            vertical-align: middle;
+        }
+        #grantPlanRemaining.text-negative,
+        #coveragePlanRemaining.text-negative,
+        #coveragePlanTotal2027.text-negative,
+        #grantLeftSum.text-negative,
+        .line-left.text-negative {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body class="bg-light">
+<div class="container-fluid px-4 py-3">
+    <div th:replace="~{fragments/admin :: header('Budżet grantu', ${activeSection})}"></div>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <a class="btn btn-outline-secondary btn-sm" th:href="@{__${adminBase}__/grants}">← Lista grantów</a>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm"
+               th:href="@{__${adminBase}__/grants/{id}/budget/export(id=${grantBudget.grantId})}">Excel</a>
+            <a class="btn btn-outline-secondary btn-sm"
+               th:href="@{__${adminBase}__/grants/{id}/edit(id=${grantBudget.grantId})}">Edycja grantu</a>
+        </div>
+    </div>
+
+    <form id="grantBudgetForm" th:action="@{__${adminBase}__/grants/{id}/budget(id=${grantBudget.grantId})}" method="post" autocomplete="off">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+            <div>
+                <h1 class="h3 mb-1" th:text="${grantBudget.grantName}">Nazwa grantu</h1>
+                <p class="text-muted mb-0">
+                    <span class="fw-semibold" th:text="${grantBudget.grantCode}">G-CODE</span>
+                    <span th:if="${grantBudget.sponsorName != null}"> · <span th:text="${grantBudget.sponsorName}">Sponsor</span></span>
+                    <span th:if="${grantBudget.projectName != null}"> · <span th:text="${grantBudget.projectName}">Projekt</span></span>
+                </p>
+            </div>
+            <div class="text-end">
+                <div class="d-flex flex-wrap gap-3 justify-content-end align-items-end">
+                    <div>
+                        <label class="text-muted small d-block" for="startDate">Data rozpoczęcia</label>
+                        <input th:if="${editMode}" class="form-control" id="startDate" name="startDate" type="date"
+                               th:value="${grantBudget.startDate}"/>
+                        <div th:unless="${editMode}" class="fw-semibold"
+                             th:text="${grantBudget.startDate != null ? #temporals.format(grantBudget.startDate, 'dd.MM.yyyy') : '—'}">01.01.2025</div>
+                    </div>
+                    <div>
+                        <label class="text-muted small d-block" for="endDate">Data zakończenia</label>
+                        <input th:if="${editMode}" class="form-control" id="endDate" name="endDate" type="date"
+                               th:value="${grantBudget.endDate}"/>
+                        <div th:unless="${editMode}" class="fw-semibold"
+                             th:text="${grantBudget.endDate != null ? #temporals.format(grantBudget.endDate, 'dd.MM.yyyy') : '—'}">31.12.2025</div>
+                    </div>
+                    <div>
+                        <label class="text-muted small d-block" for="totalAmount">Kwota grantu</label>
+                        <input th:if="${editMode}" class="form-control form-control-lg fw-bold text-end money-input"
+                               id="totalAmount" name="totalAmount" type="text" inputmode="decimal"
+                               th:value="${grantBudget.totalAmount != null ? #numbers.formatDecimal(grantBudget.totalAmount, 1, 'WHITESPACE', 2, 'COMMA') : ''}"/>
+                        <div th:unless="${editMode}" class="fs-4 fw-bold"
+                             th:text="${grantBudget.totalAmount != null ? #numbers.formatDecimal(grantBudget.totalAmount, 1, 'WHITESPACE', 2, 'COMMA') : '—'}">0,00</div>
+                        <div class="text-muted small mt-1">
+                            Kwota na jeden miesiąc:
+                            <span class="fw-semibold text-body" id="grantMonthlyAmount"
+                                  th:text="${#numbers.formatDecimal(grantBudget.amountPerActiveMonth, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <h2 class="h5 m-0">Transze</h2>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0" id="tranchesTable">
+                        <thead class="table-light">
+                        <tr>
+                            <th style="width: 6rem;">Transza</th>
+                            <th>Data</th>
+                            <th class="text-end">Kwota</th>
+                            <th class="text-center" style="width: 6rem;">Przyszło</th>
+                            <th th:if="${editMode}" style="width: 3rem;"></th>
+                        </tr>
+                        </thead>
+                        <tbody id="tranchesBody">
+                        <tr class="tranche-row" th:each="tranche, stat : ${grantBudget.tranches}">
+                            <td>
+                                <input th:if="${editMode}" type="hidden" class="tranche-id"
+                                       th:name="|tranches[${stat.index}].id|" th:value="${tranche.id}"/>
+                                <span class="tranche-label" th:text="|Transza ${stat.count}|">Transza 1</span>
+                            </td>
+                            <td>
+                                <input th:if="${editMode}" class="form-control form-control-sm tranche-planned-date" type="date"
+                                       th:name="|tranches[${stat.index}].plannedDate|"
+                                       th:value="${tranche.plannedDate}"/>
+                                <span th:unless="${editMode}"
+                                      th:text="${tranche.plannedDate != null ? #temporals.format(tranche.plannedDate, 'dd.MM.yyyy') : '—'}">—</span>
+                            </td>
+                            <td class="text-end">
+                                <input th:if="${editMode}" class="form-control form-control-sm text-end tranche-planned-amount money-input" type="text" inputmode="decimal"
+                                       th:name="|tranches[${stat.index}].plannedAmount|"
+                                       th:value="${tranche.plannedAmount != null ? #numbers.formatDecimal(tranche.plannedAmount, 1, 'WHITESPACE', 2, 'COMMA') : ''}"/>
+                                <span th:unless="${editMode}"
+                                      th:text="${tranche.plannedAmount != null ? #numbers.formatDecimal(tranche.plannedAmount, 1, 'WHITESPACE', 2, 'COMMA') : '—'}">—</span>
+                            </td>
+                            <td class="text-center">
+                                <th:block th:if="${editMode}">
+                                    <input type="hidden" class="tranche-received-hidden"
+                                           th:name="|tranches[${stat.index}].received|" value="false"/>
+                                    <input class="form-check-input tranche-received" type="checkbox" value="true"
+                                           th:name="|tranches[${stat.index}].received|"
+                                           th:checked="${tranche.received}"/>
+                                </th:block>
+                                <span th:unless="${editMode}" th:text="${tranche.received} ? 'Tak' : 'Nie'">Nie</span>
+                            </td>
+                            <td th:if="${editMode}" class="text-end">
+                                <button type="button" class="btn btn-outline-danger btn-sm remove-tranche" title="Usuń">×</button>
+                            </td>
+                        </tr>
+                        <tr class="tranche-row" th:if="${editMode and #lists.isEmpty(grantBudget.tranches)}">
+                            <td>
+                                <input type="hidden" class="tranche-id" value=""/>
+                                <span class="tranche-label">Transza 1</span>
+                            </td>
+                            <td><input class="form-control form-control-sm tranche-planned-date" type="date"/></td>
+                            <td><input class="form-control form-control-sm text-end tranche-planned-amount money-input" type="text" inputmode="decimal"/></td>
+                            <td class="text-center">
+                                <input type="hidden" class="tranche-received-hidden" value="false"/>
+                                <input class="form-check-input tranche-received" type="checkbox" value="true"/>
+                            </td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-outline-danger btn-sm remove-tranche" title="Usuń">×</button>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div th:if="${editMode}" class="card-footer bg-white">
+                <button type="button" id="addTrancheBtn" class="btn btn-outline-primary btn-sm">Dodaj transzę</button>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <h2 class="h5 m-0">Pozycje budżetu grantu</h2>
+                    <p class="text-muted small mb-0 mt-1">Grant finansuje wskazane pozycje budżetu organizacji.</p>
+                </div>
+                <button th:if="${editMode}" type="submit" class="btn btn-primary btn-sm">Zapisz budżet</button>
+                <a th:unless="${editMode}" class="btn btn-primary btn-sm"
+                   th:href="@{__${adminBase}__/grants/{id}/budget(id=${grantBudget.grantId},edit=true)}">Edytuj</a>
+            </div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0 grant-budget-table">
+                    <thead class="table-light">
+                    <tr>
+                        <th>Pozycja grantu</th>
+                        <th class="text-end" style="width: 9rem;">Plan grantu</th>
+                        <th>Pokryta pozycja budżetu organizacji</th>
+                        <th class="text-end" id="coveragePlanHeader" style="width: 9rem;"
+                            th:text="${grantBudget.coverageSplitByYear} ? 'Plan pokrycia 2026' : 'Plan pokrycia'">Plan pokrycia</th>
+                        <th th:if="${editMode or grantBudget.coverageSplitByYear}"
+                            class="text-end coverage-2027-col" style="width: 9rem;"
+                            th:classappend="${grantBudget.coverageSplitByYear} ? '' : 'd-none'">Plan pokrycia 2027</th>
+                        <th class="text-end" style="width: 9rem;">Zostało</th>
+                        <th th:if="${editMode}" style="width: 3rem;"></th>
+                    </tr>
+                    </thead>
+                    <tbody id="grantBudgetBody">
+                    <th:block th:each="line, lineStat : ${grantBudget.lines}">
+                        <tr class="grant-line-row" th:each="cov, covStat : ${line.coveredOrgLines}"
+                            th:attr="data-line-index=${lineStat.index}, data-category-code=${line.code}">
+                            <td th:if="${covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}">
+                                <th:block th:if="${editMode}">
+                                    <input type="hidden" class="line-id"
+                                           th:name="|items[${lineStat.index}].budgetItemId|"
+                                           th:value="${line.budgetItemId}"/>
+                                    <input type="hidden" class="line-code"
+                                           th:name="|items[${lineStat.index}].code|"
+                                           th:value="${line.code}"/>
+                                    <input class="form-control form-control-sm fw-semibold line-name"
+                                           th:name="|items[${lineStat.index}].name|"
+                                           th:value="${line.name}" required/>
+                                </th:block>
+                                <span th:unless="${editMode}" class="fw-semibold" th:text="${line.name}">Pozycja</span>
+                            </td>
+                            <td th:if="${covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}" class="text-end">
+                                <input th:if="${editMode}" class="form-control form-control-sm ms-auto line-planned money-input"
+                                       type="text" inputmode="decimal"
+                                       th:name="|items[${lineStat.index}].plannedAmount|"
+                                       th:value="${line.plannedAmount != null ? #numbers.formatDecimal(line.plannedAmount, 1, 'WHITESPACE', 2, 'COMMA') : ''}"/>
+                                <span th:unless="${editMode}"
+                                      th:text="${#numbers.formatDecimal(line.plannedAmount, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</span>
+                            </td>
+                            <td>
+                                <select th:if="${editMode}" class="form-select form-select-sm org-coverage-select"
+                                        th:name="|items[${lineStat.index}].coverages[${covStat.index}].sourceRef|">
+                                    <option value="">— wybierz pozycję —</option>
+                                    <option th:each="opt : ${grantBudget.orgBudgetLineOptions}"
+                                            th:value="${opt.sourceRef}"
+                                            th:attr="data-category-code=${opt.categoryCode}"
+                                            th:selected="${cov.sourceRef != null && cov.sourceRef == opt.sourceRef}"
+                                            th:text="${opt.balance != null ? opt.label + ' · ' + #numbers.formatDecimal(opt.balance, 1, 'WHITESPACE', 2, 'COMMA') : opt.label}">Pozycja</option>
+                                </select>
+                                <select th:if="${editMode}" class="form-select form-select-sm employee-coverage-select d-none mt-1" disabled>
+                                    <option value="">— wybierz pracownika —</option>
+                                </select>
+                                <span th:unless="${editMode}"
+                                      th:text="${cov.label != null and !#strings.isEmpty(cov.label) ? cov.label : '—'}">—</span>
+                            </td>
+                            <td class="text-end">
+                                <input th:if="${editMode}" class="form-control form-control-sm ms-auto coverage-amount money-input"
+                                       type="text" inputmode="decimal"
+                                       th:name="|items[${lineStat.index}].coverages[${covStat.index}].amount|"
+                                       th:value="${cov.amount != null ? #numbers.formatDecimal(cov.amount, 1, 'WHITESPACE', 2, 'COMMA') : ''}"/>
+                                <span th:unless="${editMode}"
+                                      th:text="${cov.amount != null ? #numbers.formatDecimal(cov.amount, 1, 'WHITESPACE', 2, 'COMMA') : '—'}">—</span>
+                            </td>
+                            <td th:if="${editMode or grantBudget.coverageSplitByYear}"
+                                class="text-end coverage-2027-col"
+                                th:classappend="${grantBudget.coverageSplitByYear} ? '' : 'd-none'">
+                                <input th:if="${editMode}" class="form-control form-control-sm ms-auto coverage-amount-2027 money-input"
+                                       type="text" inputmode="decimal"
+                                       th:name="|items[${lineStat.index}].coverages[${covStat.index}].amount2027|"
+                                       th:value="${cov.amount2027 != null ? #numbers.formatDecimal(cov.amount2027, 1, 'WHITESPACE', 2, 'COMMA') : ''}"/>
+                                <span th:unless="${editMode}"
+                                      th:text="${cov.amount2027 != null ? #numbers.formatDecimal(cov.amount2027, 1, 'WHITESPACE', 2, 'COMMA') : '—'}">—</span>
+                            </td>
+                            <td th:if="${covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}"
+                                class="text-end line-left"
+                                th:classappend="${line.remaining != null and line.remaining.signum() < 0} ? 'text-negative' : ''"
+                                th:text="${#numbers.formatDecimal(line.remaining, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                            <td th:if="${editMode and covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}" class="text-end">
+                                <button type="button" class="btn btn-outline-danger btn-sm remove-grant-line" title="Usuń">×</button>
+                            </td>
+                        </tr>
+                    </th:block>
+                    </tbody>
+                    <tfoot class="table-light">
+                    <tr>
+                        <th class="text-end">Suma</th>
+                        <th class="text-end" id="grantPlanSum"
+                            th:text="${#numbers.formatDecimal(grantBudget.planTotal, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</th>
+                        <th></th>
+                        <th class="text-end" id="coveragePlanTotal"
+                            th:text="${#numbers.formatDecimal(grantBudget.coveragePlanTotal, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</th>
+                        <th th:if="${editMode or grantBudget.coverageSplitByYear}"
+                            class="text-end coverage-2027-col" id="coveragePlanTotal2027"
+                            th:classappend="${grantBudget.coverageSplitByYear} ? '' : 'd-none'"
+                            th:text="${#numbers.formatDecimal(grantBudget.coveragePlanTotal2027, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</th>
+                        <th class="text-end" id="grantLeftSum"
+                            th:classappend="${grantBudget.leftTotal != null and grantBudget.leftTotal.signum() < 0} ? 'text-negative' : ''"
+                            th:text="${#numbers.formatDecimal(grantBudget.leftTotal, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</th>
+                        <th th:if="${editMode}"></th>
+                    </tr>
+                    <tr>
+                        <th class="text-end">Pozostało do rozdysponowania</th>
+                        <th class="text-end" id="grantPlanRemaining"
+                            th:classappend="${grantBudget.unallocated != null and grantBudget.unallocated.signum() < 0} ? 'text-negative' : ''"
+                            th:text="${#numbers.formatDecimal(grantBudget.unallocated, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</th>
+                        <th></th>
+                        <th class="text-end" id="coveragePlanRemaining"
+                            th:classappend="${grantBudget.coverageUnallocated != null and grantBudget.coverageUnallocated.signum() < 0} ? 'text-negative' : ''"
+                            th:text="${#numbers.formatDecimal(grantBudget.coverageUnallocated, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</th>
+                        <th th:if="${editMode or grantBudget.coverageSplitByYear}"
+                            class="coverage-2027-col"
+                            th:classappend="${grantBudget.coverageSplitByYear} ? '' : 'd-none'"></th>
+                        <th></th>
+                        <th th:if="${editMode}"></th>
+                    </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div th:if="${editMode}" class="card-footer bg-white d-flex justify-content-between align-items-center">
+                <button type="button" id="addGrantLineBtn" class="btn btn-outline-primary">Dodaj</button>
+                <button type="submit" class="btn btn-primary">Zapisz budżet</button>
+            </div>
+        </div>
+    </form>
+</div>
+<script th:if="${editMode}" th:inline="javascript">
+(() => {
+    const orgOptions = /*[[${grantBudget.orgBudgetLineOptions}]]*/ [];
+    const categories = /*[[${grantBudget.categoryOptions}]]*/ [];
+    let coverageSplit = /*[[${grantBudget.coverageSplitByYear}]]*/ false;
+    const body = document.getElementById('grantBudgetBody');
+    const form = document.getElementById('grantBudgetForm');
+    const tranchesBody = document.getElementById('tranchesBody');
+    const PAYROLL_REF = {
+        KOSZT_ADM: 'DASHBOARD_ROW|admin-wynagrodzenia',
+        KOSZT_PROM: 'DASHBOARD_ROW|promocja-wynagrodzenia'
+    };
+
+    function payrollRefFor(categoryCode) {
+        return PAYROLL_REF[categoryCode] || '';
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function categoryOptionsHtml(selectedCode) {
+        let html = '<option value="">— kategoria —</option>';
+        for (const category of categories) {
+            const selected = category.code === selectedCode ? 'selected' : '';
+            html += `<option value="${escapeHtml(category.code)}" ${selected}>${escapeHtml(category.name)}</option>`;
+        }
+        return html;
+    }
+
+    function optionLabel(option) {
+        const balance = option.balance == null ? '' : ' · ' + (window.formatMoney ? window.formatMoney(option.balance) : option.balance);
+        return `${escapeHtml(option.label)}${escapeHtml(balance)}`;
+    }
+
+    function coverageOptionsHtml(categoryCode, selectedRef) {
+        let html = '<option value="">— wybierz pozycję —</option>';
+        let hasPayroll = false;
+        for (const option of orgOptions) {
+            if (categoryCode && option.categoryCode !== categoryCode) {
+                continue;
+            }
+            if (option.sourceRef === payrollRefFor(categoryCode)) {
+                hasPayroll = true;
+            }
+            const selected = option.sourceRef === selectedRef ? 'selected' : '';
+            html += `<option value="${escapeHtml(option.sourceRef)}" data-category-code="${escapeHtml(option.categoryCode)}" ${selected}>${optionLabel(option)}</option>`;
+        }
+        const payrollRef = payrollRefFor(categoryCode);
+        if (payrollRef && !hasPayroll) {
+            const selected = selectedRef === payrollRef ? 'selected' : '';
+            html += `<option value="${payrollRef}" data-category-code="${escapeHtml(categoryCode)}" ${selected}>Wynagrodzenia</option>`;
+        }
+        return html;
+    }
+
+    function employeeOptionsHtml(selectedRef) {
+        let html = '<option value="">— wybierz pracownika —</option>';
+        const seen = new Set();
+        for (const option of orgOptions) {
+            if (!String(option.sourceRef || '').startsWith('EMPLOYEE|') || seen.has(option.sourceRef)) {
+                continue;
+            }
+            seen.add(option.sourceRef);
+            const selected = option.sourceRef === selectedRef ? 'selected' : '';
+            html += `<option value="${escapeHtml(option.sourceRef)}" ${selected}>${optionLabel(option)}</option>`;
+        }
+        return html;
+    }
+
+    function syncEmployeePicker(positionSelect, employeeRef) {
+        const picker = positionSelect.parentElement?.querySelector('.employee-coverage-select');
+        if (!picker) {
+            return;
+        }
+        const show = positionSelect.value !== '' && positionSelect.value === payrollRefFor(positionSelect.closest('tr')?.dataset.categoryCode);
+        picker.classList.toggle('d-none', !show);
+        picker.disabled = !show;
+        if (!show) {
+            picker.value = '';
+            return;
+        }
+        const current = employeeRef || picker.value;
+        picker.innerHTML = employeeOptionsHtml(current);
+        picker.value = [...picker.options].some((opt) => opt.value === current) ? current : '';
+    }
+
+    function filterSelect(select, categoryCode) {
+        const picker = select.parentElement?.querySelector('.employee-coverage-select');
+        const current = select.value;
+        const savedEmployee = current.startsWith('EMPLOYEE|')
+            ? current
+            : (picker && String(picker.value).startsWith('EMPLOYEE|') ? picker.value : '');
+        const payrollRef = payrollRefFor(categoryCode);
+        const positionRef = payrollRef && savedEmployee ? payrollRef : current;
+        select.innerHTML = coverageOptionsHtml(categoryCode, positionRef);
+        if ([...select.options].some((opt) => opt.value === positionRef && opt.value !== '')) {
+            select.value = positionRef;
+        } else {
+            select.value = '';
+        }
+        syncEmployeePicker(select, payrollRef ? savedEmployee : '');
+    }
+
+    function grantLineGroup(row) {
+        let first = row;
+        while (first && !first.querySelector('.line-name') && first.previousElementSibling) {
+            first = first.previousElementSibling;
+        }
+        const rows = [];
+        let current = first;
+        while (current && current.classList.contains('grant-line-row')) {
+            rows.push(current);
+            current = current.nextElementSibling;
+            if (current && current.querySelector('.line-name')) {
+                break;
+            }
+        }
+        return rows;
+    }
+
+    function lineCategoryCode(group) {
+        const first = group[0];
+        if (!first) {
+            return '';
+        }
+        return first.dataset.categoryCode
+            || first.querySelector('.line-code')?.value
+            || '';
+    }
+
+    function bumpRowspan(firstRow, delta) {
+        firstRow.querySelectorAll('[rowspan]').forEach((td) => {
+            const next = Math.max(1, Number(td.getAttribute('rowspan') || 1) + delta);
+            td.setAttribute('rowspan', String(next));
+        });
+    }
+
+    function addEmptyCoverageRow(afterRow, categoryCode) {
+        const tr = document.createElement('tr');
+        tr.className = 'grant-line-row coverage-extra-row';
+        tr.dataset.categoryCode = categoryCode || '';
+        tr.innerHTML = `
+            <td>
+                <select class="form-select form-select-sm org-coverage-select">${coverageOptionsHtml(categoryCode, '')}</select>
+                <select class="form-select form-select-sm employee-coverage-select d-none mt-1" disabled>
+                    <option value="">— wybierz pracownika —</option>
+                </select>
+            </td>
+            <td class="text-end">
+                <input class="form-control form-control-sm ms-auto coverage-amount money-input" type="text" inputmode="decimal"/>
+            </td>
+            ${coverage2027CellHtml()}`;
+        afterRow.after(tr);
+        bumpRowspan(grantLineGroup(afterRow)[0], 1);
+        reindex();
+        return tr;
+    }
+
+    function ensureTrailingEmptyCoverage(row) {
+        const group = grantLineGroup(row);
+        const last = group[group.length - 1];
+        const select = last?.querySelector('.org-coverage-select');
+        if (!select || !select.value) {
+            return;
+        }
+        addEmptyCoverageRow(last, lineCategoryCode(group));
+    }
+
+    function addGrantLine() {
+        const row = document.createElement('tr');
+        row.className = 'grant-line-row';
+        row.innerHTML = `
+            <td rowspan="1">
+                <select class="form-select form-select-sm mb-1 line-code">${categoryOptionsHtml('')}</select>
+                <input class="form-control form-control-sm fw-semibold line-name" required placeholder="Nazwa pozycji grantu"/>
+            </td>
+            <td rowspan="1" class="text-end">
+                <input class="form-control form-control-sm ms-auto line-planned money-input" type="text" inputmode="decimal" value="0,00"/>
+            </td>
+            <td>
+                <select class="form-select form-select-sm org-coverage-select">${coverageOptionsHtml('', '')}</select>
+                <select class="form-select form-select-sm employee-coverage-select d-none mt-1" disabled>
+                    <option value="">— wybierz pracownika —</option>
+                </select>
+            </td>
+            <td class="text-end">
+                <input class="form-control form-control-sm ms-auto coverage-amount money-input" type="text" inputmode="decimal"/>
+            </td>
+            ${coverage2027CellHtml()}
+            <td rowspan="1" class="text-end line-left">0,00</td>
+            <td rowspan="1" class="text-end">
+                <button type="button" class="btn btn-outline-danger btn-sm remove-grant-line" title="Usuń">×</button>
+            </td>`;
+        body.appendChild(row);
+        reindex();
+        updateGrantPlanRemaining();
+        updateLineLeft(row);
+        row.querySelector('.line-name')?.focus();
+    }
+
+    function reindex() {
+        let lineIndex = -1;
+        let coverageIndex = 0;
+        body.querySelectorAll('.grant-line-row').forEach((row) => {
+            if (row.querySelector('.line-name')) {
+                lineIndex += 1;
+                coverageIndex = 0;
+                const idInput = row.querySelector('.line-id');
+                const codeInput = row.querySelector('.line-code');
+                const nameInput = row.querySelector('.line-name');
+                const plannedInput = row.querySelector('.line-planned');
+                if (idInput) idInput.name = `items[${lineIndex}].budgetItemId`;
+                if (codeInput) codeInput.name = `items[${lineIndex}].code`;
+                if (nameInput) nameInput.name = `items[${lineIndex}].name`;
+                if (plannedInput) plannedInput.name = `items[${lineIndex}].plannedAmount`;
+            }
+            const select = row.querySelector('.org-coverage-select');
+            const employeeSelect = row.querySelector('.employee-coverage-select');
+            const amount = row.querySelector('.coverage-amount');
+            const amount2027 = row.querySelector('.coverage-amount-2027');
+            const payroll = select && select.value !== '' && select.value === payrollRefFor(row.dataset.categoryCode);
+            if (select) {
+                if (payroll) {
+                    select.removeAttribute('name');
+                } else {
+                    select.name = `items[${lineIndex}].coverages[${coverageIndex}].sourceRef`;
+                }
+            }
+            if (employeeSelect) {
+                if (payroll) {
+                    employeeSelect.disabled = false;
+                    employeeSelect.name = `items[${lineIndex}].coverages[${coverageIndex}].sourceRef`;
+                } else {
+                    employeeSelect.disabled = true;
+                    employeeSelect.removeAttribute('name');
+                }
+            }
+            if (amount) {
+                amount.name = `items[${lineIndex}].coverages[${coverageIndex}].amount`;
+            }
+            if (amount2027) {
+                amount2027.name = `items[${lineIndex}].coverages[${coverageIndex}].amount2027`;
+                amount2027.disabled = !coverageSplit;
+            }
+            coverageIndex += 1;
+        });
+    }
+
+    function parseAmount(value) {
+        if (value == null || value === '') {
+            return 0;
+        }
+        const parsed = Number(String(value).replace(/\u00a0|\u202f/g, '').replace(/ /g, '').replace(',', '.'));
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function formatAmount(value) {
+        return value.toLocaleString('pl-PL', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+            useGrouping: true,
+            minimumGroupingDigits: 1
+        }).replace(/\u00a0|\u202f/g, ' ');
+    }
+
+    function updateLineLeft(row) {
+        const group = grantLineGroup(row);
+        const first = group[0];
+        const cell = first?.querySelector('.line-left');
+        if (!cell) {
+            return;
+        }
+        const planned = parseAmount(first.querySelector('.line-planned')?.value);
+        let covered = 0;
+        group.forEach((groupRow) => {
+            groupRow.querySelectorAll('.coverage-amount, .coverage-amount-2027').forEach((input) => {
+                if (input.disabled) {
+                    return;
+                }
+                covered += parseAmount(input.value);
+            });
+        });
+        const left = planned - covered;
+        cell.textContent = formatAmount(left);
+        cell.classList.toggle('text-negative', left < 0);
+    }
+
+    function updateAllLineLeft() {
+        body.querySelectorAll('.grant-line-row').forEach((row) => {
+            if (row.querySelector('.line-name')) {
+                updateLineLeft(row);
+            }
+        });
+    }
+
+    function setFooterAmount(id, amount) {
+        const cell = document.getElementById(id);
+        if (!cell) {
+            return;
+        }
+        cell.textContent = formatAmount(amount);
+        cell.classList.toggle('text-negative', amount < 0);
+    }
+
+    function updateGrantPlanRemaining() {
+        const total = parseAmount(document.getElementById('totalAmount')?.value);
+        let planned = 0;
+        body.querySelectorAll('.line-planned').forEach((input) => {
+            planned += parseAmount(input.value);
+        });
+        setFooterAmount('grantPlanSum', planned);
+        setFooterAmount('grantPlanRemaining', total - planned);
+        updateCoveragePlanTotal();
+    }
+
+    function sumCoverage(selector) {
+        let sum = 0;
+        body.querySelectorAll(selector).forEach((input) => {
+            if (input.disabled) {
+                return;
+            }
+            sum += parseAmount(input.value);
+        });
+        return sum;
+    }
+
+    function updateCoveragePlanTotal() {
+        const sum = sumCoverage('.coverage-amount');
+        const sum2027 = sumCoverage('.coverage-amount-2027');
+        const planned = [...body.querySelectorAll('.line-planned')]
+            .reduce((total, input) => total + parseAmount(input.value), 0);
+        const grantTotal = parseAmount(document.getElementById('totalAmount')?.value);
+        setFooterAmount('coveragePlanTotal', sum);
+        setFooterAmount('coveragePlanTotal2027', sum2027);
+        setFooterAmount('coveragePlanRemaining', grantTotal - sum - sum2027);
+        setFooterAmount('grantLeftSum', planned - sum - sum2027);
+    }
+
+    function coverage2027CellHtml() {
+        const hidden = coverageSplit ? '' : ' d-none';
+        return `<td class="text-end coverage-2027-col${hidden}">
+            <input class="form-control form-control-sm ms-auto coverage-amount-2027 money-input" type="text" inputmode="decimal"${coverageSplit ? '' : ' disabled'}/>
+        </td>`;
+    }
+
+    function refreshCoverageSplit() {
+        const end = document.getElementById('endDate')?.value || '';
+        coverageSplit = end.slice(0, 4) === '2027';
+        document.querySelectorAll('.coverage-2027-col').forEach((cell) => {
+            cell.classList.toggle('d-none', !coverageSplit);
+        });
+        const header = document.getElementById('coveragePlanHeader');
+        if (header) {
+            header.textContent = coverageSplit ? 'Plan pokrycia 2026' : 'Plan pokrycia';
+        }
+        reindex();
+        updateCoveragePlanTotal();
+        updateAllLineLeft();
+    }
+
+    body.querySelectorAll('.grant-line-row').forEach((row) => {
+        const code = row.dataset.categoryCode || row.querySelector('.line-code')?.value || '';
+        row.querySelectorAll('.org-coverage-select').forEach((select) => filterSelect(select, code));
+    });
+    body.querySelectorAll('.grant-line-row').forEach((row) => {
+        if (row.querySelector('.line-name')) {
+            ensureTrailingEmptyCoverage(row);
+        }
+    });
+    reindex();
+
+    document.getElementById('addGrantLineBtn')?.addEventListener('click', addGrantLine);
+
+    body.addEventListener('change', (event) => {
+        if (event.target.matches('.org-coverage-select')) {
+            syncEmployeePicker(event.target, '');
+            ensureTrailingEmptyCoverage(event.target.closest('tr'));
+            reindex();
+            return;
+        }
+        if (event.target.matches('.employee-coverage-select')) {
+            ensureTrailingEmptyCoverage(event.target.closest('tr'));
+            reindex();
+            return;
+        }
+        const codeSelect = event.target.closest('select.line-code');
+        if (!codeSelect || codeSelect.tagName !== 'SELECT') {
+            return;
+        }
+        const row = codeSelect.closest('tr');
+        row.dataset.categoryCode = codeSelect.value;
+        const group = grantLineGroup(row);
+        group.forEach((groupRow) => {
+            groupRow.dataset.categoryCode = codeSelect.value;
+            const coverageSelect = groupRow.querySelector('.org-coverage-select');
+            if (coverageSelect) {
+                filterSelect(coverageSelect, codeSelect.value);
+            }
+        });
+        const nameInput = row.querySelector('.line-name');
+        if (nameInput && !nameInput.value) {
+            nameInput.value = codeSelect.selectedOptions[0]?.textContent?.trim() || '';
+        }
+    });
+
+    body.addEventListener('click', (event) => {
+        const button = event.target.closest('.remove-grant-line');
+        if (!button) {
+            return;
+        }
+        const row = button.closest('tr');
+        const rowspan = Number(row.querySelector('td[rowspan]')?.getAttribute('rowspan') || 1);
+        let current = row;
+        for (let i = 0; i < rowspan && current; i++) {
+            const next = current.nextElementSibling;
+            current.remove();
+            current = next;
+        }
+        reindex();
+        updateGrantPlanRemaining();
+        updateCoveragePlanTotal();
+        updateAllLineLeft();
+    });
+
+    form?.addEventListener('submit', () => {
+        reindex();
+        reindexTranches();
+    });
+
+    function reindexTranches() {
+        if (!tranchesBody) {
+            return;
+        }
+        tranchesBody.querySelectorAll('.tranche-row').forEach((row, index) => {
+            const label = row.querySelector('.tranche-label');
+            if (label) {
+                label.textContent = `Transza ${index + 1}`;
+            }
+            setTrancheName(row.querySelector('.tranche-id'), `tranches[${index}].id`);
+            setTrancheName(row.querySelector('.tranche-planned-date'), `tranches[${index}].plannedDate`);
+            setTrancheName(row.querySelector('.tranche-planned-amount'), `tranches[${index}].plannedAmount`);
+            setTrancheName(row.querySelector('.tranche-received-hidden'), `tranches[${index}].received`);
+            setTrancheName(row.querySelector('.tranche-received'), `tranches[${index}].received`);
+            const checkbox = row.querySelector('.tranche-received');
+            const hidden = row.querySelector('.tranche-received-hidden');
+            if (hidden) {
+                hidden.disabled = Boolean(checkbox?.checked);
+            }
+        });
+    }
+
+    function setTrancheName(element, name) {
+        if (element) {
+            element.name = name;
+        }
+    }
+
+    document.getElementById('addTrancheBtn')?.addEventListener('click', () => {
+        const row = document.createElement('tr');
+        row.className = 'tranche-row';
+        row.innerHTML = `
+            <td>
+                <input type="hidden" class="tranche-id" value=""/>
+                <span class="tranche-label"></span>
+            </td>
+            <td><input class="form-control form-control-sm tranche-planned-date" type="date"/></td>
+            <td><input class="form-control form-control-sm text-end tranche-planned-amount money-input" type="text" inputmode="decimal"/></td>
+            <td class="text-center">
+                <input type="hidden" class="tranche-received-hidden" value="false"/>
+                <input class="form-check-input tranche-received" type="checkbox" value="true"/>
+            </td>
+            <td class="text-end">
+                <button type="button" class="btn btn-outline-danger btn-sm remove-tranche" title="Usuń">×</button>
+            </td>`;
+        tranchesBody.appendChild(row);
+        reindexTranches();
+        row.querySelector('.tranche-planned-date')?.focus();
+    });
+
+    tranchesBody?.addEventListener('click', (event) => {
+        const button = event.target.closest('.remove-tranche');
+        if (!button) {
+            return;
+        }
+        button.closest('tr')?.remove();
+        reindexTranches();
+    });
+    reindexTranches();
+    form?.addEventListener('input', (event) => {
+        if (event.target.matches('.line-planned, #totalAmount')) {
+            updateGrantPlanRemaining();
+        }
+        if (event.target.matches('.line-planned, input.money-input:not(.line-planned)')) {
+            const row = event.target.closest('tr');
+            if (row) {
+                updateLineLeft(row);
+            }
+        }
+        if (event.target.matches('.coverage-amount, .coverage-amount-2027')) {
+            updateCoveragePlanTotal();
+        }
+    });
+    document.getElementById('totalAmount')?.addEventListener('input', () => {
+        updateGrantPlanRemaining();
+        updateCoveragePlanTotal();
+    });
+    form?.addEventListener('input', (event) => {
+        if (event.target.matches('#totalAmount, #startDate, #endDate')) {
+            updateMonthlyAmount();
+        }
+        if (event.target.matches('#endDate')) {
+            refreshCoverageSplit();
+        }
+    });
+    form?.addEventListener('change', (event) => {
+        if (event.target.matches('#startDate, #endDate')) {
+            updateMonthlyAmount();
+        }
+        if (event.target.matches('#endDate')) {
+            refreshCoverageSplit();
+        }
+    });
+    updateGrantPlanRemaining();
+    updateCoveragePlanTotal();
+    updateAllLineLeft();
+    updateMonthlyAmount();
+
+    function updateMonthlyAmount() {
+        const target = document.getElementById('grantMonthlyAmount');
+        const totalInput = document.getElementById('totalAmount');
+        if (!target || !totalInput || typeof window.parseMoney !== 'function') {
+            return;
+        }
+        const months = activeMonthCount(
+            document.getElementById('startDate')?.value,
+            document.getElementById('endDate')?.value);
+        const total = window.parseMoney(totalInput.value);
+        const amount = months > 0 ? Math.round((total / months) * 100) / 100 : 0;
+        target.textContent = window.formatMoney(amount);
+    }
+
+    function activeMonthCount(startValue, endValue) {
+        if (!startValue && !endValue) {
+            return 0;
+        }
+        let from = startValue || endValue;
+        let to = endValue || startValue;
+        if (to < from) {
+            const swapped = from;
+            from = to;
+            to = swapped;
+        }
+        const start = new Date(from + 'T00:00:00');
+        const end = new Date(to + 'T00:00:00');
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            return 0;
+        }
+        let y = start.getFullYear();
+        let m = start.getMonth();
+        const endY = end.getFullYear();
+        const endM = end.getMonth();
+        let count = 0;
+        while (y < endY || (y === endY && m <= endM)) {
+            count++;
+            m++;
+            if (m > 11) {
+                m = 0;
+                y++;
+            }
+        }
+        return count;
+    }
+})();
+</script>
+</body>
+</html>

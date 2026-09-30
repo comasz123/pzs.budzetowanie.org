@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<th:block th:fragment="rows(budgetData, selectedYear)">
+    <tr class="grant-remaining-row">
+        <td class="fw-semibold col-label">
+            <span>Zostało do wydania (rok)</span>
+            <button type="button"
+                    class="btn btn-link btn-sm p-0 ms-1 align-baseline"
+                    onclick="toggleGrantYearSplit(this)">Rozwiń</button>
+        </td>
+        <td class="text-end col-amount text-muted">—</td>
+        <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount fw-semibold"
+            th:classappend="${budgetData.grantRemainingByName.get(grant) != null && budgetData.grantRemainingByName.get(grant).signum() < 0} ? 'text-danger' : ''"
+            th:text="${budgetData.grantRemainingByName.get(grant) != null ? #numbers.formatDecimal(budgetData.grantRemainingByName.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+        <td class="text-end col-amount text-muted">—</td>
+    </tr>
+    <tr class="grant-year-split d-none">
+        <td class="col-label">Całkowita suma grantu</td>
+        <td class="text-end col-amount text-muted">—</td>
+        <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
+            th:text="${budgetData.grantTotalByName.get(grant) != null ? #numbers.formatDecimal(budgetData.grantTotalByName.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+        <td class="text-end col-amount text-muted">—</td>
+    </tr>
+    <tr class="grant-year-split d-none">
+        <td class="col-label" th:text="|Suma na rok ${selectedYear}|">Suma na rok 2026</td>
+        <td class="text-end col-amount text-muted">—</td>
+        <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
+            th:text="${budgetData.grantYearAmountByName.get(grant) != null ? #numbers.formatDecimal(budgetData.grantYearAmountByName.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+        <td class="text-end col-amount text-muted">—</td>
+    </tr>
+    <tr class="grant-year-split d-none">
+        <td class="col-label" th:text="|Reszta na rok ${selectedYear + 1}|">Reszta na rok 2027</td>
+        <td class="text-end col-amount text-muted">—</td>
+        <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
+            th:text="${budgetData.grantNextYearByName.get(grant) != null ? #numbers.formatDecimal(budgetData.grantNextYearByName.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+        <td class="text-end col-amount text-muted">—</td>
+    </tr>
+</th:block>
+</body>
+</html>

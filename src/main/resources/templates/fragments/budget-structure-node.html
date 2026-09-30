@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="content" id="budget-structure-panel"
+     th:attr="data-row-key=${structureNode.rowKey}">
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb mb-0 small">
+            <li class="breadcrumb-item">
+                <button type="button" class="btn btn-link btn-sm p-0 align-baseline budget-structure-close-root">
+                    Budżet
+                </button>
+            </li>
+            <li th:each="crumb, stat : ${structureNode.breadcrumbs}"
+                class="breadcrumb-item"
+                th:classappend="${stat.last} ? 'active' : ''"
+                th:attr="aria-current=${stat.last} ? 'page' : null">
+                <button th:if="${!stat.last}"
+                        type="button"
+                        class="btn btn-link btn-sm p-0 align-baseline budget-structure-open"
+                        th:attr="data-row-key=${crumb.rowKey}"
+                        th:text="${crumb.name}">Kategoria</button>
+                <span th:if="${stat.last}" th:text="${crumb.name}">Kategoria</span>
+            </li>
+        </ol>
+    </nav>
+
+    <div th:if="${!structureNode.editable}" class="alert alert-info py-2 small mb-3">
+        Pracownicy i wynagrodzenia edytujesz w zakładce <strong>Pracownicy</strong>.
+    </div>
+
+    <div th:if="${structureNode.editable}">
+        <p class="text-muted small mb-2">
+            Kliknij nazwę pozycji, aby przejść poziom niżej. Kwota zabudżetowana sumuje się w pozycji nadrzędnej.
+        </p>
+        <p class="text-muted small mb-2" th:if="${structureNode.evenMonthlySplit}">
+            Wpisana kwota jest roczna i dzieli się po równo na każdy miesiąc.
+        </p>
+
+        <div class="list-group mb-3" id="budget-structure-items">
+            <div th:if="${#lists.isEmpty(structureNode.items)}" class="list-group-item text-muted small">
+                Brak podpozycji — dodaj pierwszą poniżej.
+            </div>
+            <div th:each="item : ${structureNode.items}"
+                 class="list-group-item d-flex flex-wrap align-items-center gap-2 py-2 budget-structure-item"
+                 th:attr="data-row-key=${item.rowKey}, data-parent-row-key=${item.parentRowKey}">
+                <span class="drag-handle structure-drag-handle" draggable="true" title="Przeciągnij">
+                    <span></span><span></span><span></span><span></span><span></span><span></span>
+                </span>
+                <button th:if="${item.navigable}"
+                        type="button"
+                        class="btn btn-link p-0 text-start budget-structure-open fw-semibold"
+                        th:attr="data-row-key=${item.rowKey}"
+                        th:text="${item.name + ' ›'}">Pozycja</button>
+                <span th:if="${!item.navigable}" class="flex-grow-1" th:text="${item.name}">Pozycja</span>
+                <div class="input-group input-group-sm" style="width: 8.5rem;">
+                    <input type="text"
+                           inputmode="decimal"
+                           class="form-control budget-structure-amount money-input"
+                           placeholder="0,00"
+                           th:attr="data-parent-row-key=${item.parentRowKey}, data-row-key=${item.rowKey}"
+                           th:value="${item.plannedAmount != null ? #numbers.formatDecimal(item.plannedAmount, 1, 'WHITESPACE', 2, 'COMMA') : ''}"/>
+                    <span class="input-group-text">zł</span>
+                </div>
+                <form th:if="${item.deletable && item.categoryTemplateId != null}"
+                      class="m-0 budget-structure-delete-form"
+                      th:action="@{__${budgetBase}__/categories/{id}/delete(id=${item.categoryTemplateId})}"
+                      method="post">
+                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                    <input type="hidden" name="year" th:value="${selectedYear}"/>
+                    <button type="submit" class="btn btn-outline-danger btn-sm" title="Usuń">×</button>
+                </form>
+                <form th:if="${item.deletable && item.categoryTemplateId == null}"
+                      class="m-0 budget-structure-delete-form"
+                      th:action="@{__${budgetBase}__/subcategories/delete}"
+                      method="post">
+                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                    <input type="hidden" name="parentRowKey" th:value="${item.parentRowKey}"/>
+                    <input type="hidden" name="rowKey" th:value="${item.rowKey}"/>
+                    <input type="hidden" name="year" th:value="${selectedYear}"/>
+                    <button type="submit" class="btn btn-outline-danger btn-sm" title="Usuń">×</button>
+                </form>
+            </div>
+        </div>
+
+        <form class="d-flex flex-wrap align-items-center gap-2 budget-structure-add-form"
+              th:action="@{__${budgetBase}__/subcategories}"
+              method="post">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+            <input type="hidden" name="parentRowKey" th:value="${structureNode.rowKey}"/>
+            <input type="hidden" name="year" th:value="${selectedYear}"/>
+            <input class="form-control form-control-sm" name="name" placeholder="Nowa podpozycja" style="max-width: 16rem;" required/>
+            <button type="submit" class="btn btn-sm btn-primary">Dodaj</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>

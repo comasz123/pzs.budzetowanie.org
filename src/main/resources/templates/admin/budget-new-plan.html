@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <th:block th:replace="~{fragments/favicon :: favicon}"></th:block>
+    <title th:text="|Nowy budżet ${wizard.fiscalYear} – plan|">Plan budżetu</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script th:src="@{/js/money-input.js}"></script>
+    <style>
+        .wizard-scroll {
+            max-height: calc(100vh - 14rem);
+            overflow-y: auto;
+        }
+        .budget-wizard-table input.money-input {
+            min-width: 7rem;
+            text-align: right;
+        }
+        .budget-wizard-table td,
+        .budget-wizard-table th {
+            vertical-align: middle;
+        }
+        .category-header td {
+            background: #f8f9fa;
+            font-weight: 600;
+            border-top: 2px solid #dee2e6;
+        }
+        .add-row td {
+            color: #6c757d;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body class="bg-light">
+<div class="container-fluid px-4 py-3">
+    <div th:replace="~{fragments/admin :: header('Nowy budżet', ${activeSection})}"></div>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h4 mb-1" th:text="|Plan roczny ${wizard.fiscalYear}|">Plan roczny 2027</h1>
+            <p class="text-muted small mb-0">Krok 1 z 13 — uzupełnij planowane koszty roczne. Enter w polu dodawania tworzy pozycję lub kategorię.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm"
+               th:href="@{__${adminBase}__/budget/new/{year}/plan/export(year=${wizard.fiscalYear})}">Excel</a>
+            <a class="btn btn-outline-secondary btn-sm" th:href="@{__${adminBase}__/budget/new}">← Wróć</a>
+        </div>
+    </div>
+
+    <form id="planForm" th:action="@{__${adminBase}__/budget/new/{year}/plan(year=${wizard.fiscalYear})}" method="post">
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Pozycje budżetowe</span>
+                <button type="submit" class="btn btn-primary">Zapisz</button>
+            </div>
+            <div class="card-body p-0 wizard-scroll">
+                <table class="table table-sm table-hover mb-0 budget-wizard-table" id="planTable">
+                    <thead class="table-light sticky-top">
+                    <tr>
+                        <th style="min-width: 16rem;">Pozycja</th>
+                        <th class="text-end" style="width: 10rem;">Planowany koszt</th>
+                        <th class="text-center" style="width: 11rem;">Rozbij na 12 miesięcy</th>
+                    </tr>
+                    </thead>
+
+                    <tbody th:each="cat, catStat : ${wizard.categories}"
+                           class="category-group"
+                           th:attr="data-cat-index=${catStat.index}, data-even-split=${cat.evenMonthlySplit}">
+                        <tr class="category-header">
+                            <td colspan="3">
+                                <input type="hidden"
+                                       th:name="|categories[${catStat.index}].templateId|"
+                                       th:value="${cat.templateId}"/>
+                                <span th:text="${cat.name}">Kategoria</span>
+                            </td>
+                        </tr>
+                        <tr th:each="line, lineStat : ${cat.lines}"
+                            th:classappend="${line.newLine} ? 'add-line-row add-row' : 'data-line-row'">
+                            <td>
+                                <input type="hidden"
+                                       th:if="${!line.newLine}"
+                                       th:name="|categories[${catStat.index}].lines[${lineStat.index}].allocationId|"
+                                       th:value="${line.allocationId}"/>
+                                <input type="hidden"
+                                       th:if="${!line.newLine}"
+                                       th:name="|categories[${catStat.index}].lines[${lineStat.index}].employeeId|"
+                                       th:value="${line.employeeId}"/>
+                                <input type="hidden"
+                                       th:if="${!line.newLine}"
+                                       th:name="|categories[${catStat.index}].lines[${lineStat.index}].adminGroup|"
+                                       th:value="${line.adminGroup}"/>
+                                <input type="hidden"
+                                       th:if="${line.newLine}"
+                                       th:name="|categories[${catStat.index}].lines[${lineStat.index}].newLine|"
+                                       value="true"
+                                       class="new-line-flag"/>
+                                <input class="form-control form-control-sm add-line-input"
+                                       th:if="${line.newLine}"
+                                       th:attr="data-line-index=${lineStat.index}"
+                                       th:name="|categories[${catStat.index}].lines[${lineStat.index}].label|"
+                                       placeholder="Dodaj nową pozycję…"/>
+                                <span th:if="${!line.newLine and line.employeeId != null}"
+                                      th:text="${line.label}">Pracownik</span>
+                                <input class="form-control form-control-sm"
+                                       th:if="${!line.newLine and line.employeeId == null}"
+                                       th:name="|categories[${catStat.index}].lines[${lineStat.index}].label|"
+                                       th:value="${line.label}"/>
+                            </td>
+                            <td class="text-end">
+                                <input class="form-control form-control-sm money-input"
+                                       type="text" inputmode="decimal"
+                                       th:name="|categories[${catStat.index}].lines[${lineStat.index}].annualAmount|"
+                                       th:value="${line.annualAmount != null ? #numbers.formatDecimal(line.annualAmount, 1, 'WHITESPACE', 2, 'COMMA') : ''}"
+                                       th:disabled="${line.newLine}"/>
+                            </td>
+                            <td class="text-center">
+                                <input type="hidden"
+                                       th:if="${cat.evenMonthlySplit and !line.newLine}"
+                                       th:name="|categories[${catStat.index}].lines[${lineStat.index}].splitToMonths|"
+                                       value="true"/>
+                                <input class="form-check-input"
+                                       type="checkbox"
+                                       th:unless="${cat.evenMonthlySplit}"
+                                       th:name="|categories[${catStat.index}].lines[${lineStat.index}].splitToMonths|"
+                                       th:checked="${line.splitToMonths}"
+                                       th:disabled="${line.newLine}"/>
+                                <input class="form-check-input"
+                                       type="checkbox"
+                                       th:if="${cat.evenMonthlySplit}"
+                                       checked
+                                       disabled
+                                       title="Wynagrodzenia i koszty administracyjne dzielone są po równo na każdy miesiąc"/>
+                            </td>
+                        </tr>
+                    </tbody>
+
+                    <tbody id="new-category-section">
+                        <tr class="category-header add-row">
+                            <td colspan="3">Dodaj nową kategorię</td>
+                        </tr>
+                        <tr class="add-category-row">
+                            <td>
+                                <input class="form-control form-control-sm add-category-input"
+                                       id="newCategoryInput"
+                                       placeholder="Nazwa nowej kategorii…"
+                                       autocomplete="off"/>
+                            </td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer bg-white text-end">
+                <button type="submit" class="btn btn-primary">Zapisz</button>
+            </div>
+        </div>
+    </form>
+</div>
+<div th:replace="~{fragments/footer :: budget-footer}"></div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script th:inline="javascript">
+(function () {
+    const form = document.getElementById('planForm');
+    const table = document.getElementById('planTable');
+    const newCategorySection = document.getElementById('new-category-section');
+
+    form.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') {
+            return;
+        }
+        const target = e.target;
+        if (target.tagName !== 'INPUT' || target.type === 'submit') {
+            return;
+        }
+        e.preventDefault();
+        if (target.classList.contains('add-line-input')) {
+            addLineFromPlaceholder(target);
+        } else if (target.classList.contains('add-category-input')) {
+            addCategoryFromInput(target);
+        }
+    });
+
+    function escapeHtml(text) {
+        return text.replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function countCategoryGroups() {
+        return table.querySelectorAll('tbody.category-group').length;
+    }
+
+    function nextLineIndex(tbody) {
+        return tbody.querySelectorAll('tr.data-line-row').length;
+    }
+
+    function categoryEvenSplit(catIndex) {
+        const tbody = table.querySelector('tbody.category-group[data-cat-index="' + catIndex + '"]');
+        return tbody != null && tbody.dataset.evenSplit === 'true';
+    }
+
+    function buildLineRow(catIndex, lineIndex, label) {
+        const tr = document.createElement('tr');
+        tr.className = 'data-line-row';
+        const evenSplit = categoryEvenSplit(catIndex);
+        tr.innerHTML =
+            '<td>' +
+            '<input class="form-control form-control-sm" type="text" ' +
+            'name="categories[' + catIndex + '].lines[' + lineIndex + '].label" ' +
+            'value="' + escapeHtml(label) + '"/>' +
+            '</td>' +
+            '<td class="text-end">' +
+            '<input class="form-control form-control-sm money-input" type="text" inputmode="decimal" ' +
+            'name="categories[' + catIndex + '].lines[' + lineIndex + '].annualAmount" value="0,00"/>' +
+            '</td>' +
+            '<td class="text-center">' +
+            (evenSplit
+                ? '<input type="hidden" name="categories[' + catIndex + '].lines[' + lineIndex + '].splitToMonths" value="true"/>' +
+                  '<input class="form-check-input" type="checkbox" checked disabled title="Wynagrodzenia i koszty administracyjne dzielone są po równo na każdy miesiąc"/>'
+                : '<input class="form-check-input" type="checkbox" name="categories[' + catIndex + '].lines[' + lineIndex + '].splitToMonths" value="true"/>') +
+            '</td>';
+        return tr;
+    }
+
+    function buildAddLineRow(catIndex, lineIndex) {
+        const tr = document.createElement('tr');
+        tr.className = 'add-line-row add-row';
+        tr.innerHTML =
+            '<td>' +
+            '<input type="hidden" class="new-line-flag" ' +
+            'name="categories[' + catIndex + '].lines[' + lineIndex + '].newLine" value="true"/>' +
+            '<input class="form-control form-control-sm add-line-input" type="text" ' +
+            'data-line-index="' + lineIndex + '" ' +
+            'name="categories[' + catIndex + '].lines[' + lineIndex + '].label" ' +
+            'placeholder="Dodaj nową pozycję…"/>' +
+            '</td>' +
+            '<td class="text-end">' +
+            '<input class="form-control form-control-sm money-input" type="text" inputmode="decimal" ' +
+            'name="categories[' + catIndex + '].lines[' + lineIndex + '].annualAmount" disabled/>' +
+            '</td>' +
+            '<td class="text-center">' +
+            '<input class="form-check-input" type="checkbox" ' +
+            'name="categories[' + catIndex + '].lines[' + lineIndex + '].splitToMonths" disabled/>' +
+            '</td>';
+        return tr;
+    }
+
+    function addLineFromPlaceholder(input) {
+        const label = input.value.trim();
+        if (!label) {
+            return;
+        }
+        const tbody = input.closest('tbody.category-group');
+        const catIndex = tbody.dataset.catIndex;
+        const addRow = input.closest('tr.add-line-row');
+        const lineIndex = nextLineIndex(tbody);
+
+        const dataRow = buildLineRow(catIndex, lineIndex, label);
+        tbody.insertBefore(dataRow, addRow);
+
+        const newAddIndex = lineIndex + 1;
+        const newAddRow = buildAddLineRow(catIndex, newAddIndex);
+        tbody.replaceChild(newAddRow, addRow);
+        newAddRow.querySelector('.add-line-input').focus();
+    }
+
+    function addCategoryFromInput(input) {
+        const name = input.value.trim();
+        if (!name) {
+            return;
+        }
+        const catIndex = countCategoryGroups();
+        const tbody = document.createElement('tbody');
+        tbody.className = 'category-group';
+        tbody.dataset.catIndex = String(catIndex);
+
+        const headerRow = document.createElement('tr');
+        headerRow.className = 'category-header';
+        headerRow.innerHTML =
+            '<td colspan="3">' +
+            '<input type="hidden" name="categories[' + catIndex + '].newCategory" value="true"/>' +
+            '<input type="hidden" name="categories[' + catIndex + '].name" value="' + escapeHtml(name) + '"/>' +
+            escapeHtml(name) +
+            '</td>';
+
+        tbody.appendChild(headerRow);
+        tbody.appendChild(buildAddLineRow(catIndex, 0));
+
+        newCategorySection.parentNode.insertBefore(tbody, newCategorySection);
+        input.value = '';
+        tbody.querySelector('.add-line-input').focus();
+    }
+})();
+</script>
+</body>
+</html>

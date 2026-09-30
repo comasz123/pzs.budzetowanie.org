@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <th:block th:replace="~{fragments/favicon :: favicon}"></th:block>
+    <title th:text="${rowDetail.row.itemName + ' — Budget ' + (currentOrganization != null ? currentOrganization.name : 'NGO')}">Pozycja budżetu</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        .budget-matrix td.text-negative,
+        .text-negative { color: #dc3545 !important; font-weight: bold; }
+        .text-positive { color: #198754; font-weight: bold; }
+        .budget-matrix { font-size: 0.8125rem; }
+        .budget-matrix th, .budget-matrix td { padding: 0.35rem 0.4rem; vertical-align: middle; }
+        .col-label { min-width: 7.5rem; max-width: 14rem; white-space: normal; word-break: break-word; }
+        .col-grant-header { max-width: 5.75rem; min-width: 3.25rem; white-space: normal; word-break: break-word; font-size: 0.68rem; font-weight: 600; text-align: end; }
+        tr.grant-remaining-row td { background: #f8f9fa; }
+        tr.grant-year-split td { background: #f8f9fa; font-size: 0.75rem; color: #495057; }
+        tr.grant-year-split td.col-label { padding-left: 1.25rem; }
+        .grant-remaining-label { font-size: 0.58rem; font-weight: 500; opacity: 0.85; line-height: 1.1; }
+        .grant-remaining-value { font-size: 0.68rem; font-weight: 600; }
+        .col-amount-header { max-width: 4.75rem; font-size: 0.68rem; text-align: end; }
+        .col-amount { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 0.9375rem; font-weight: 500; }
+        .row-link { text-decoration: none; font-weight: 600; }
+        .row-link:hover { text-decoration: underline; }
+        .breadcrumb-nav { font-size: 0.9rem; }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container-fluid px-4 py-3" th:with="row=${rowDetail.row}, budgetData=${rowDetail.dashboard}">
+    <nav class="breadcrumb-nav mb-3" aria-label="breadcrumb">
+        <a th:href="${monthView} ? @{__${budgetBase}__/month(year=${selectedYear}, month=${selectedMonth})} : @{__${budgetBase}__(year=${selectedYear})}"
+           th:text="${budgetBase == '/realizacja'} ? 'Realizacja budżetu' : 'Budżet'">Budżet</a>
+        <th:block th:each="crumb : ${rowDetail.breadcrumbs}">
+            <span class="text-muted"> / </span>
+            <a class="row-link"
+               th:href="${monthView} ? @{__${budgetBase}__/row(year=${selectedYear}, month=${selectedMonth}, rowKey=${crumb.rowKey})} : @{__${budgetBase}__/row(year=${selectedYear}, rowKey=${crumb.rowKey})}"
+               th:text="${crumb.itemName}">Pozycja</a>
+        </th:block>
+        <span class="text-muted"> / </span>
+        <span class="fw-semibold" th:text="${row.itemName}">Pozycja</span>
+    </nav>
+
+    <p class="text-muted mb-2"
+       th:text="${budgetBase == '/realizacja'}
+            ? (monthView ? |Wydatki — ${selectedMonthName} ${selectedYear} (PLN)| : 'Wydatki w PLN')
+            : (monthView ? |Koszty planowane na miesiąc — ${selectedMonthName} ${selectedYear} (PLN)| : 'Wszystkie koszty w PLN')">
+        Wszystkie koszty w PLN
+    </p>
+    <div th:replace="~{fragments/nav :: budget-nav(${monthView} ? 'months' : 'dashboard')}"></div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="card-title m-0" th:text="${row.itemName}">Pozycja</h5>
+            <a class="btn btn-sm btn-outline-secondary"
+               th:href="${monthView} ? @{__${budgetBase}__/export(year=${selectedYear}, month=${selectedMonth}, rowKey=${row.rowKey})} : @{__${budgetBase}__/export(year=${selectedYear}, rowKey=${row.rowKey})}">Excel</a>
+        </div>
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-sm table-bordered align-middle m-0 budget-matrix">
+                <thead class="table-dark">
+                <tr>
+                    <th class="col-label">Pozycja / Koszt</th>
+                    <th class="text-end col-amount-header"
+                        th:text="${budgetBase == '/realizacja'} ? 'Wydatki' : 'Planowany Koszt'">Planowany Koszt</th>
+                    <th th:each="grant : ${budgetData.grantNames}" class="text-end col-grant-header" th:text="${grant}">Grant</th>
+                    <th class="text-end col-amount-header">Bilans</th>
+                </tr>
+                </thead>
+                <tbody>
+                <th:block th:replace="~{fragments/grant-year-split :: rows(${budgetData}, ${selectedYear})}"
+                          th:unless="${budgetBase == '/realizacja'}"></th:block>
+                <tr>
+                    <td class="fw-semibold col-label" th:text="${row.itemName}">Pozycja</td>
+                    <td class="text-end col-amount fw-bold" th:text="${#numbers.formatDecimal(row.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                    <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
+                        th:text="${row.coverageByGrant.get(grant) != null && row.coverageByGrant.get(grant) > 0 ? #numbers.formatDecimal(row.coverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+                    <td class="text-end col-amount" th:classappend="${row.balance != null && row.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
+                        th:text="${#numbers.formatDecimal(row.balance, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                </tr>
+                <tr th:each="child : ${row.children}">
+                    <td class="col-label ps-4">
+                        <a th:if="${child.rowKey != null && !#strings.isEmpty(child.rowKey)}"
+                           class="row-link"
+                           th:href="${monthView} ? @{__${budgetBase}__/row(year=${selectedYear}, month=${selectedMonth}, rowKey=${child.rowKey})} : @{__${budgetBase}__/row(year=${selectedYear}, rowKey=${child.rowKey})}"
+                           th:text="${child.itemName}">Podpozycja</a>
+                        <span th:unless="${child.rowKey != null && !#strings.isEmpty(child.rowKey)}" th:text="${child.itemName}">Podpozycja</span>
+                    </td>
+                    <td class="text-end col-amount"
+                        th:text="${child.totalCost != null && child.totalCost > 0 ? #numbers.formatDecimal(child.totalCost, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+                    <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
+                        th:text="${child.coverageByGrant.get(grant) != null && child.coverageByGrant.get(grant) > 0 ? #numbers.formatDecimal(child.coverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+                    <td class="text-end col-amount" th:classappend="${child.balance != null && child.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
+                        th:text="${child.balance != null ? #numbers.formatDecimal(child.balance, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card shadow-sm" th:if="${!#lists.isEmpty(row.allocations)}">
+        <div class="card-header bg-white py-3">
+            <h5 class="card-title m-0">Alokacje</h5>
+        </div>
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-sm table-bordered align-middle m-0 budget-matrix">
+                <thead class="table-light">
+                <tr>
+                    <th class="col-label">Pozycja / Kategoria</th>
+                    <th th:each="grant : ${budgetData.grantNames}" class="text-end col-grant-header" th:text="${grant}">Grant</th>
+                    <th class="text-end col-amount-header">Kwota</th>
+                    <th class="text-end col-amount-header">Bilans</th>
+                    <th class="text-end col-amount-header">Udział</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="alloc : ${row.allocations}">
+                    <td class="col-label" th:text="${alloc.itemName}">Pozycja</td>
+                    <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
+                        th:text="${alloc.amountByGrant.get(grant) != null && alloc.amountByGrant.get(grant) > 0 ? #numbers.formatDecimal(alloc.amountByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+                    <td class="text-end col-amount" th:text="${#numbers.formatDecimal(alloc.amount, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                    <td class="text-end col-amount" th:classappend="${alloc.balance != null && alloc.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
+                        th:text="${#numbers.formatDecimal(alloc.balance, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                    <td class="text-end col-amount" th:text="${#numbers.formatDecimal(alloc.percent, 1, 'WHITESPACE', 1, 'COMMA')} + '%'">0%</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div th:replace="~{fragments/footer :: budget-footer}"></div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    function toggleGrantYearSplit(button) {
+        const table = button.closest('table');
+        const rows = table.querySelectorAll('tr.grant-year-split');
+        const open = rows.length > 0 && !rows[0].classList.contains('d-none');
+        rows.forEach(row => row.classList.toggle('d-none', open));
+        button.textContent = open ? 'Rozwiń' : 'Zwiń';
+    }
+</script>
+</body>
+</html>

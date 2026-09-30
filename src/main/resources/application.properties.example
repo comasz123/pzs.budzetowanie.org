@@ -1,0 +1,43 @@
+spring.application.name=budget
+
+# Reverse proxy (Apache / Cloudflare) — potrzebne do poprawnego HTTPS za proxy
+server.forward-headers-strategy=framework
+
+# Lokalnie: false. Na serwerze: true
+app.security.require-auth=false
+app.security.require-https=false
+# false na serwerze — seed tylko uzupełnia braki, nie nadpisuje zmian użytkownika
+app.seed.overwrite-existing=false
+# false = pusta instalacja (organizacja, role, admin, kategorie). Bez pracowników, grantów i wydatków.
+app.seed.demo-data=true
+# true = usuń dane operacyjne roku przy starcie (projekty, granty, wydatki, alokacje); kategorie budżetowe zostają
+app.budget.clear-2025-on-startup=false
+app.budget.clear-2026-on-startup=false
+
+# Automatyczne kopie zapasowe bazy (zapis na dysku serwera)
+app.backup.enabled=true
+app.backup.directory=./backups
+app.backup.retention-count=14
+app.backup.cron=0 0 3 * * *
+
+spring.servlet.multipart.max-file-size=10MB
+spring.servlet.multipart.max-request-size=10MB
+
+# Konfiguracja MariaDB
+server.servlet.session.cookie.same-site=lax
+
+# Konfiguracja MariaDB
+spring.datasource.url=jdbc:mariadb://localhost:3306/budget_ngo
+spring.datasource.username=CHANGE_ME
+spring.datasource.password=CHANGE_ME
+spring.datasource.driver-class-name=org.mariadb.jdbc.Driver
+
+# Hibernate / JPA
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+
+# Pierwszy admin (tworzony tylko gdy nie istnieje)
+app.admin.email=admin@example.com
+app.admin.password=CHANGE_ME
+app.admin.first-name=Admin
+app.admin.last-name=User

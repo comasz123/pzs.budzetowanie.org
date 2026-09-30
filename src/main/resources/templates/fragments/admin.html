@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<th:block th:fragment="header(title, active)">
+    <h2 class="mb-2" th:text="${title}">Zarządzanie</h2>
+    <div th:replace="~{fragments/nav :: budget-nav(${active})}"></div>
+    <div th:replace="~{fragments/alerts :: flash-messages}"></div>
+</th:block>
+</body>
+</html>

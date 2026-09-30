@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<body>
+<th:block th:fragment="budget-nav(active)">
+    <style>
+        .budget-nav-sticky {
+            position: sticky;
+            top: 0;
+            z-index: 1040;
+            background-color: #fff;
+        }
+        .budget-main-nav .nav-link,
+        .budget-months-bar .nav-link {
+            white-space: nowrap;
+        }
+        .budget-months-bar .nav-link {
+            font-size: 0.875rem;
+            padding: 0.35rem 0.65rem;
+        }
+        .budget-main-nav .nav-link.active,
+        .budget-months-bar .nav-link.active,
+        .budget-main-nav button.nav-link.active {
+            text-decoration: underline;
+            text-underline-offset: 0.3rem;
+            text-decoration-thickness: 2px;
+        }
+        .budget-user-bar .btn-link {
+            text-decoration: none;
+        }
+        .budget-user-bar .btn-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+    <div class="budget-nav-sticky mb-4 border rounded shadow-sm bg-white">
+        <nav class="navbar navbar-light budget-main-nav px-3 py-2 mb-0">
+            <div class="container-fluid px-0 d-flex flex-wrap align-items-center gap-2">
+                <ul class="nav flex-row flex-wrap gap-1 align-items-center mb-0">
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold" th:href="@{/}">Pulpit</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'dashboard'} ? 'active text-primary' : ''"
+                           th:href="@{__${budgetBase}__(year=${navYear})}">Budżet</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'months'} ? 'active text-primary' : ''"
+                           th:href="@{__${budgetBase}__/month(year=${navCurrentYear}, month=${navCurrentMonth})}">Miesiące</a>
+                    </li>
+                    <li class="nav-item" th:if="${budgetBase == '/realizacja'}">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'expenditures'} ? 'active text-primary' : ''"
+                           th:href="@{/realizacja/wydatki(year=${navYear})}">Wydatki</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'grants'} ? 'active text-primary' : ''"
+                           th:href="@{__${adminBase}__/grants(year=${navYear})}">Granty</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'sponsors'} ? 'active text-primary' : ''"
+                           th:href="@{__${adminBase}__/sponsors}">Sponsorzy</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'employees'} ? 'active text-primary' : ''"
+                           th:href="@{__${adminBase}__/employees}">Pracownicy</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'projects'} ? 'active text-primary' : ''"
+                           th:href="@{__${adminBase}__/projects}">Projekty</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'budget-new'} ? 'active text-primary' : ''"
+                           th:href="@{__${adminBase}__/budget/new}">Nowy budżet</a>
+                    </li>
+                </ul>
+                <div class="budget-user-bar ms-md-auto text-nowrap small d-flex align-items-center gap-2"
+                     sec:authorize="isAuthenticated()">
+                    <span class="text-muted">Zalogowany:</span>
+                    <span class="text-dark fw-semibold" th:text="${currentUserDisplay}">Jan Kowalski</span>
+                    <form th:action="@{/logout}" method="post" class="mb-0">
+                        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                        <button type="submit" class="btn btn-link btn-sm p-0 text-muted">Wyloguj</button>
+                    </form>
+                </div>
+            </div>
+        </nav>
+        <div id="budget-months-bar"
+             class="budget-months-bar border-top px-3 py-2"
+             th:classappend="${active == 'months'} ? '' : 'd-none'">
+            <ul class="nav flex-row flex-wrap gap-1 align-items-center mb-0">
+                <li class="nav-item" th:each="monthLabel, stat : ${monthNames}">
+                    <a class="nav-link fw-semibold"
+                       th:classappend="${active == 'months' && navMonth != null && navMonth == stat.count} ? 'active text-primary' : ''"
+                       th:href="@{__${budgetBase}__/month(year=${navYear}, month=${stat.count})}"
+                       th:text="${monthLabel}">Styczeń</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</th:block>
+</body>
+</html>

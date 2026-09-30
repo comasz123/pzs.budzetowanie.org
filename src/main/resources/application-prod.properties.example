@@ -1,0 +1,19 @@
+# Profil produkcyjny: uruchom z --spring.profiles.active=prod
+# Wymaga nagłówków X-Forwarded-Proto / X-Forwarded-For z Apache
+
+app.security.require-auth=true
+app.security.require-https=true
+app.seed.overwrite-existing=false
+server.forward-headers-strategy=framework
+server.servlet.session.cookie.secure=true
+server.servlet.session.cookie.same-site=lax
+
+app.tenant.demo-host=ngo.budzetowanie.org
+app.tenant.localhost-as-demo=false
+
+spring.jpa.show-sql=false
+
+app.backup.enabled=true
+app.backup.directory=/var/www/ngo.budzetowanie.pl/backups
+app.backup.retention-count=14
+app.backup.cron=0 0 3 * * *
