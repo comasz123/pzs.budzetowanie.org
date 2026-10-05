@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import pl.ngo.budget.security.CurrentAccess;
 import pl.ngo.budget.service.BudgetExcelExportService;
 import pl.ngo.budget.util.ExcelDownload;
 import pl.ngo.budget.service.BudgetMatrixService;
@@ -38,16 +39,19 @@ public class DashboardController {
     private final BudgetStructureService budgetStructureService;
     private final DatabaseBackupService databaseBackupService;
     private final BudgetExcelExportService budgetExcelExportService;
+    private final CurrentAccess currentAccess;
 
     public DashboardController(BudgetMatrixService budgetMatrixService,
                                BudgetSetupService budgetSetupService,
                                BudgetStructureService budgetStructureService,
                                DatabaseBackupService databaseBackupService,
-                               BudgetExcelExportService budgetExcelExportService) {
+                               BudgetExcelExportService budgetExcelExportService,
+                               CurrentAccess currentAccess) {
         this.budgetMatrixService = budgetMatrixService;
         this.budgetSetupService = budgetSetupService;
         this.budgetStructureService = budgetStructureService;
         this.databaseBackupService = databaseBackupService;
+        this.currentAccess = currentAccess;
         this.budgetExcelExportService = budgetExcelExportService;
     }
 
@@ -59,7 +63,7 @@ public class DashboardController {
         ensureSession(request);
         int selectedYear = year != null ? year : LocalDate.now().getYear();
         populateYearDashboard(model, selectedYear);
-        model.addAttribute("editMode", Boolean.TRUE.equals(edit)
+        model.addAttribute("editMode", currentAccess.editRequested(edit)
                 && !BudgetSection.REALIZATION.equals(BudgetSection.currentBase()));
         return "dashboard";
     }
@@ -77,7 +81,7 @@ public class DashboardController {
             selectedMonth = LocalDate.now().getMonthValue();
         }
         model.addAttribute("monthView", true);
-        model.addAttribute("editMode", Boolean.TRUE.equals(edit)
+        model.addAttribute("editMode", currentAccess.editRequested(edit)
                 && !BudgetSection.REALIZATION.equals(BudgetSection.currentBase()));
         model.addAttribute("selectedMonth", selectedMonth);
         model.addAttribute("selectedMonthName", PolishMonthNames.of(selectedMonth));

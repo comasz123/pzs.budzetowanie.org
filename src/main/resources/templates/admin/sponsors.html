@@ -14,8 +14,8 @@
         <p class="text-muted mb-0">Sponsorzy i kontakty</p>
         <div class="d-flex gap-2">
             <a class="btn btn-outline-secondary btn-sm" th:href="@{__${adminBase}__/sponsors/export}">Excel</a>
-            <a class="btn btn-outline-primary btn-sm" th:href="@{__${adminBase}__/sponsor-contacts/new}">Dodaj kontakt</a>
-            <a class="btn btn-primary btn-sm" th:href="@{__${adminBase}__/sponsors/new}">Dodaj sponsora</a>
+            <a th:if="${canEdit}" class="btn btn-outline-primary btn-sm" th:href="@{__${adminBase}__/sponsor-contacts/new}">Dodaj kontakt</a>
+            <a th:if="${canEdit}" class="btn btn-primary btn-sm" th:href="@{__${adminBase}__/sponsors/new}">Dodaj sponsora</a>
         </div>
     </div>
 
@@ -30,7 +30,7 @@
                     <th>Miasto</th>
                     <th>E-mail</th>
                     <th>Telefon</th>
-                    <th class="text-end">Akcje</th>
+                    <th class="text-end" th:if="${canEdit}">Akcje</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -40,7 +40,7 @@
                     <td th:text="${sponsor.city != null ? sponsor.city : '-'}">Miasto</td>
                     <td th:text="${sponsor.email != null ? sponsor.email : '-'}">E-mail</td>
                     <td th:text="${sponsor.phone != null ? sponsor.phone : '-'}">Telefon</td>
-                    <td class="text-end text-nowrap">
+                    <td class="text-end text-nowrap" th:if="${canEdit}">
                         <a class="btn btn-outline-secondary btn-sm" th:href="@{__${adminBase}__/sponsors/{id}/edit(id=${sponsor.id})}">Edytuj</a>
                         <a class="btn btn-outline-primary btn-sm" th:href="@{__${adminBase}__/sponsor-contacts/new(sponsorId=${sponsor.id})}">Kontakt</a>
                         <form th:action="@{__${adminBase}__/sponsors/{id}/delete(id=${sponsor.id})}" method="post" class="d-inline"
@@ -69,7 +69,7 @@
                     <th>Stanowisko</th>
                     <th>E-mail</th>
                     <th>Telefon</th>
-                    <th class="text-end">Akcje</th>
+                    <th class="text-end" th:if="${canEdit}">Akcje</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -79,7 +79,7 @@
                     <td th:text="${contact.position != null ? contact.position : '-'}">Stanowisko</td>
                     <td th:text="${contact.email != null ? contact.email : '-'}">E-mail</td>
                     <td th:text="${contact.phone != null ? contact.phone : '-'}">Telefon</td>
-                    <td class="text-end text-nowrap">
+                    <td class="text-end text-nowrap" th:if="${canEdit}">
                         <a class="btn btn-outline-secondary btn-sm" th:href="@{__${adminBase}__/sponsor-contacts/{id}/edit(id=${contact.id})}">Edytuj</a>
                         <form th:action="@{__${adminBase}__/sponsor-contacts/{id}/delete(id=${contact.id})}" method="post" class="d-inline"
                               onsubmit="return confirm('Usunąć kontakt?');">

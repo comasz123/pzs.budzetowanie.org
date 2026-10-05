@@ -14,7 +14,7 @@
         <p class="text-muted mb-0">Lista pracowników</p>
         <div class="d-flex gap-2">
             <a class="btn btn-outline-secondary btn-sm" th:href="@{__${adminBase}__/employees/export}">Excel</a>
-            <a class="btn btn-primary btn-sm" th:href="@{__${adminBase}__/employees/new}">Dodaj pracownika</a>
+            <a th:if="${canEdit}" class="btn btn-primary btn-sm" th:href="@{__${adminBase}__/employees/new}">Dodaj pracownika</a>
         </div>
     </div>
 
@@ -28,7 +28,7 @@
                     <th>E-mail</th>
                     <th>Telefon</th>
                     <th class="text-end">Planowany koszt</th>
-                    <th class="text-end">Akcje</th>
+                    <th class="text-end" th:if="${canEdit}">Akcje</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -38,7 +38,7 @@
                     <td th:text="${employee.email != null ? employee.email : '-'}">E-mail</td>
                     <td th:text="${employee.phone != null ? employee.phone : '-'}">Telefon</td>
                     <td class="text-end" th:text="${employee.plannedCost != null ? #numbers.formatDecimal(employee.plannedCost, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0</td>
-                    <td class="text-end text-nowrap">
+                    <td class="text-end text-nowrap" th:if="${canEdit}">
                         <a class="btn btn-outline-secondary btn-sm" th:href="@{__${adminBase}__/employees/{id}/edit(id=${employee.id})}">Edytuj</a>
                         <form th:action="@{__${adminBase}__/employees/{id}/delete(id=${employee.id})}" method="post" class="d-inline"
                               onsubmit="return confirm('Usunąć pracownika?');">

@@ -33,13 +33,6 @@ import java.util.stream.Collectors;
 public class NewBudgetService {
 
     private static final String PERSONNEL_CODE = "KOSZT_PER";
-    private static final String PROMOTION_CODE = "KOSZT_PROM";
-    private static final String EQUIPMENT_CODE = "KOSZT_SPRZ";
-
-    private static final List<String> PROMOTION_LABELS = List.of(
-            "Social Media", "Publikacje", "Ogłoszenia", "Wynagrodzenia");
-    private static final List<String> EQUIPMENT_LABELS = List.of(
-            "Sprzęt komputerowy", "Meble", "Inne");
 
     private final CostAllocationRepository costAllocationRepository;
     private final BudgetItemTemplateRepository budgetItemTemplateRepository;
@@ -355,18 +348,6 @@ public class NewBudgetService {
                         line.setSplitToMonths(true);
                         lines.add(line);
                     });
-        } else if (PROMOTION_CODE.equals(code)) {
-            for (String label : PROMOTION_LABELS) {
-                NewBudgetLineDto line = new NewBudgetLineDto();
-                line.setLabel(label);
-                lines.add(line);
-            }
-        } else if (EQUIPMENT_CODE.equals(code)) {
-            for (String label : EQUIPMENT_LABELS) {
-                NewBudgetLineDto line = new NewBudgetLineDto();
-                line.setLabel(label);
-                lines.add(line);
-            }
         }
         return lines;
     }

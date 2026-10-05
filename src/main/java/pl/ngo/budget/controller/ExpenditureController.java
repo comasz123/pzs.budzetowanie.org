@@ -8,6 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import pl.ngo.budget.dto.ExpenditureImportResult;
 import pl.ngo.budget.entity.cost.Expenditure;
+import pl.ngo.budget.security.CurrentAccess;
 import pl.ngo.budget.service.ExpenditureImportService;
 import pl.ngo.budget.service.ViewExcelExportService;
 import pl.ngo.budget.util.BudgetSection;
@@ -28,11 +29,14 @@ public class ExpenditureController {
 
     private final ExpenditureImportService expenditureImportService;
     private final ViewExcelExportService viewExcelExportService;
+    private final CurrentAccess currentAccess;
 
     public ExpenditureController(ExpenditureImportService expenditureImportService,
-                                 ViewExcelExportService viewExcelExportService) {
+                                 ViewExcelExportService viewExcelExportService,
+                                 CurrentAccess currentAccess) {
         this.expenditureImportService = expenditureImportService;
         this.viewExcelExportService = viewExcelExportService;
+        this.currentAccess = currentAccess;
     }
 
     @GetMapping
@@ -65,8 +69,9 @@ public class ExpenditureController {
         model.addAttribute("totalGross", sum(expenditures, Expenditure::getGrossAmount));
         model.addAttribute("grants", expenditureImportService.listGrants());
         model.addAttribute("projects", expenditureImportService.listProjects());
-        model.addAttribute("editMode", Boolean.TRUE.equals(edit));
-        model.addAttribute("splitId", Boolean.TRUE.equals(edit) ? splitId : null);
+        boolean editing = currentAccess.editRequested(edit);
+        model.addAttribute("editMode", editing);
+        model.addAttribute("splitId", editing ? splitId : null);
         return "admin/expenditures";
     }
 

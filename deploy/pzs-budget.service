@@ -1,0 +1,25 @@
+[Unit]
+Description=PZS Budget (Spring Boot)
+After=network-online.target mariadb.service
+Wants=network-online.target
+Requires=mariadb.service
+
+[Service]
+Type=simple
+User=tomaszt
+Group=tomaszt
+WorkingDirectory=/var/www/pzs.budzetowanie.org
+
+ExecStart=/usr/bin/java -jar /var/www/pzs.budzetowanie.org/budget-0.0.1-SNAPSHOT.jar
+SuccessExitStatus=143
+
+Restart=on-failure
+RestartSec=10
+
+StandardOutput=append:/var/www/pzs.budzetowanie.org/app.log
+StandardError=append:/var/www/pzs.budzetowanie.org/app.log
+
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

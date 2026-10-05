@@ -35,7 +35,7 @@
             <a class="btn btn-outline-secondary btn-sm" th:href="@{__${expenditureBase}__/sample(year=2026)}">
                 wydatki-2026.xlsx
             </a>
-            <a class="btn btn-primary btn-sm"
+            <a th:if="${canEdit}" class="btn btn-primary btn-sm"
                th:href="@{__${expenditureBase}__/import(year=${fiscalYear}, month=${selectedMonth})}">
                 Importuj miesiąc
             </a>
@@ -64,7 +64,7 @@
                 <span th:text="${fiscalYear}">2026</span>
                 — <span th:text="${totalInMonth}">0</span> pozycji
             </span>
-            <a th:unless="${editMode}" class="btn btn-sm btn-outline-primary"
+            <a th:if="${canEdit and !editMode}" class="btn btn-sm btn-outline-primary"
                th:href="@{__${expenditureBase}__(year=${fiscalYear}, month=${selectedMonth}, edit=true)}">Edycja</a>
             <a th:if="${editMode}" class="btn btn-sm btn-outline-secondary"
                th:href="@{__${expenditureBase}__(year=${fiscalYear}, month=${selectedMonth})}">Zakończ</a>

@@ -39,11 +39,13 @@ import pl.ngo.budget.repository.SponsorContactRepository;
 import pl.ngo.budget.repository.SponsorRepository;
 import pl.ngo.budget.repository.TravelBudgetLineRepository;
 import pl.ngo.budget.repository.UserRepository;
+import pl.ngo.budget.security.AppRoles;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -112,6 +114,18 @@ public class DataInitializer implements CommandLineRunner {
 
     @Value("${app.admin.last-name:Systemowy}")
     private String adminLastName;
+
+    @Value("${app.editor.email:katarzynadaliga@zielonasiec.pl}")
+    private String editorEmail;
+
+    @Value("${app.editor.password:}")
+    private String editorPassword;
+
+    @Value("${app.editor.first-name:Katarzyna}")
+    private String editorFirstName;
+
+    @Value("${app.editor.last-name:Daliga}")
+    private String editorLastName;
 
     @Value("${app.seed.overwrite-existing:false}")
     private boolean overwriteExisting;
@@ -182,15 +196,19 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        Role adminRole = ensureRole("ROLE_ADMIN", "Administrator systemu");
-        Role financeRole = ensureRole("ROLE_FINANCE", "Skarbnik / Księgowość");
+        Role adminRole = ensureRole("ROLE_ADMIN", "Administrator");
+        Role editRole = ensureRole("ROLE_EDIT", "Edycja");
+        ensureRole("ROLE_READ_ONLY", "Podgląd");
+        ensureRole("ROLE_FINANCE", "Skarbnik / Księgowość");
+        ensureRole("ROLE_USER", "Koordynator projektu");
         if (!seedDemoData) {
-            runEmptyInstall(adminRole, financeRole);
+            runEmptyInstall(adminRole, editRole);
             return;
         }
 
         Organization demoOrganization = ensureDemoOrganization();
-        syncAdminUser(adminRole, financeRole, demoOrganization);
+        syncAdminUser(adminRole, demoOrganization);
+        syncEditorUser(editRole, demoOrganization);
         syncEmployeesFromSeed();
         backfillExpenditureFiscalYears();
         syncGrantDisplayNames();
@@ -604,11 +622,10 @@ public class DataInitializer implements CommandLineRunner {
         });
     }
 
-    private void runEmptyInstall(Role adminRole, Role financeRole) {
+    private void runEmptyInstall(Role adminRole, Role editRole) {
         Organization organization = ensureEmptyOrganization();
-        syncAdminUser(adminRole, financeRole, organization);
-        ensureRole("ROLE_USER", "Koordynator projektu");
-        ensureRole("ROLE_READ_ONLY", "Podgląd i audyt");
+        syncAdminUser(adminRole, organization);
+        syncEditorUser(editRole, organization);
         ensureAllStandardBudgetTemplates();
         budgetSetupService.ensureBudgetCategoryDisplayOrder();
         log.info(
@@ -663,7 +680,7 @@ public class DataInitializer implements CommandLineRunner {
         return saved;
     }
 
-    private void syncAdminUser(Role adminRole, Role financeRole, Organization organization) {
+    private void syncAdminUser(Role adminRole, Organization organization) {
         User admin = userRepository.findByEmail(adminEmail).orElseGet(User::new);
         admin.setEmail(adminEmail);
         admin.setPassword(passwordEncoder.encode(adminPassword));
@@ -671,10 +688,51 @@ public class DataInitializer implements CommandLineRunner {
         admin.setLastName(adminLastName);
         admin.setEnabled(true);
         admin.setOrganization(organization);
-        if (admin.getRoles() == null || admin.getRoles().isEmpty()) {
-            admin.setRoles(Set.of(adminRole, financeRole));
-        }
+        admin.setRoles(new HashSet<>(Set.of(adminRole)));
         userRepository.save(admin);
+    }
+
+    private void syncEditorUser(Role editRole, Organization organization) {
+        if (editorEmail == null || editorEmail.isBlank()) {
+            return;
+        }
+        String email = editorEmail.trim().toLowerCase();
+        User editor = userRepository.findByEmail(email).orElse(null);
+        if (editor == null) {
+            if (editorPassword == null || editorPassword.isBlank()) {
+                log.info("Konto edycji {} nie istnieje. Dodaj je w panelu użytkowników.", email);
+                return;
+            }
+            editor = new User();
+            editor.setEmail(email);
+            editor.setPassword(passwordEncoder.encode(editorPassword));
+            editor.setFirstName(editorFirstName);
+            editor.setLastName(editorLastName);
+            editor.setEnabled(true);
+            editor.setOrganization(organization);
+            editor.setRoles(new HashSet<>(Set.of(editRole)));
+            userRepository.save(editor);
+            log.info("Utworzono konto edycji: {}", email);
+            return;
+        }
+        if (editor.getOrganization() == null) {
+            editor.setOrganization(organization);
+        }
+        if (needsEditorRole(editor)) {
+            editor.setRoles(new HashSet<>(Set.of(editRole)));
+            log.info("Konto {} dostało rolę edycji.", email);
+        }
+        if (editorPassword != null && !editorPassword.isBlank()) {
+            editor.setPassword(passwordEncoder.encode(editorPassword));
+        }
+        userRepository.save(editor);
+    }
+
+    private static boolean needsEditorRole(User editor) {
+        if (editor.getRoles() == null || editor.getRoles().isEmpty()) {
+            return true;
+        }
+        return editor.getRoles().stream().allMatch(role -> AppRoles.isLegacy(role.getName()));
     }
 
     private void seedPublicationsIfMissing() {

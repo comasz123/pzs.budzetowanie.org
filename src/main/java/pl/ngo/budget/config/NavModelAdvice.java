@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import pl.ngo.budget.model.User;
 import pl.ngo.budget.model.Organization;
 import pl.ngo.budget.repository.UserRepository;
+import pl.ngo.budget.security.CurrentAccess;
 import pl.ngo.budget.tenant.TenantContext;
 import pl.ngo.budget.util.BudgetSection;
 import pl.ngo.budget.util.PolishMonthNames;
@@ -19,9 +20,11 @@ import java.util.List;
 public class NavModelAdvice {
 
     private final UserRepository userRepository;
+    private final CurrentAccess currentAccess;
 
-    public NavModelAdvice(UserRepository userRepository) {
+    public NavModelAdvice(UserRepository userRepository, CurrentAccess currentAccess) {
         this.userRepository = userRepository;
+        this.currentAccess = currentAccess;
     }
 
     @ModelAttribute("navCurrentYear")
@@ -69,6 +72,16 @@ public class NavModelAdvice {
     @ModelAttribute("currentOrganization")
     public Organization currentOrganization() {
         return TenantContext.getOrganization().orElse(null);
+    }
+
+    @ModelAttribute("canEdit")
+    public boolean canEdit() {
+        return currentAccess.canEdit();
+    }
+
+    @ModelAttribute("isAdmin")
+    public boolean isAdmin() {
+        return currentAccess.isAdmin();
     }
 
     @ModelAttribute("userAuthenticated")

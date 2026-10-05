@@ -106,23 +106,10 @@ public class BudgetMatrixService {
             new LabeledSubcategory(PROMO_PAYROLL_KEY, "Wynagrodzenia")
     );
 
-    private static final Map<String, BigDecimal> PROMOTION_DEFAULT_ANNUAL = Map.of(
-            "promocja-social-media", new BigDecimal("15000.00"),
-            "promocja-publikacje", new BigDecimal("10000.00"),
-            "promocja-ogloszenia", new BigDecimal("5000.00"),
-            "promocja-wynagrodzenia", new BigDecimal("12000.00")
-    );
-
     private static final List<LabeledSubcategory> EQUIPMENT_SUBCATEGORIES = List.of(
             new LabeledSubcategory("sprzet-komputerowy", "Sprzęt komputerowy"),
             new LabeledSubcategory("sprzet-meble", "Meble"),
             new LabeledSubcategory("sprzet-inne", "Inne")
-    );
-
-    private static final Map<String, BigDecimal> EQUIPMENT_DEFAULT_ANNUAL = Map.of(
-            "sprzet-komputerowy", new BigDecimal("15000.00"),
-            "sprzet-meble", new BigDecimal("5000.00"),
-            "sprzet-inne", new BigDecimal("3500.00")
     );
 
     private final GrantRepository grantRepository;
@@ -1596,8 +1583,7 @@ public class BudgetMatrixService {
                                                                           List<LabeledSubcategory> subcategories,
                                                                           List<String> grantNames,
                                                                           Map<Long, String> grantNameByProjectId,
-                                                                          BigDecimal amountScale,
-                                                                          Integer month) {
+                                                                          BigDecimal amountScale) {
         List<CostAllocation> categoryAllocations = allAllocations.stream()
                 .filter(a -> a.getCategory() != null && categoryCode.equals(a.getCategory().getCode()))
                 .toList();
@@ -1607,11 +1593,12 @@ public class BudgetMatrixService {
             List<CostAllocation> items = categoryAllocations.stream()
                     .filter(a -> labelMatches(a.getLabel(), subcategory.label()))
                     .toList();
-            BudgetItemRowDto child = buildLabeledSubcategoryRow(
+            if (items.isEmpty()) {
+                continue;
+            }
+            children.add(buildLabeledSubcategoryRow(
                     subcategory.rowKey(), subcategory.label(), categoryLabel, items,
-                    grantNames, grantNameByProjectId, amountScale);
-            applyPromotionDefaultPlan(child, month);
-            children.add(child);
+                    grantNames, grantNameByProjectId, amountScale));
         }
         return children;
     }
@@ -1625,74 +1612,6 @@ public class BudgetMatrixService {
             return annual;
         }
         return MonthlySplit.shareForMonth(annual, month);
-    }
-
-    /**
-     * Sprzęt nie dzieli się równo na miesiące: komputery to trzy zakupy po 5 000
-     * (marzec, czerwiec, wrzesień), meble 60% w kwietniu i 40% w październiku,
-     * pozostałe w całości w grudniu.
-     */
-    private void applyEquipmentSchedule(BudgetItemRowDto row, Integer month) {
-        if (row.getChildren() == null) {
-            return;
-        }
-        for (BudgetItemRowDto child : row.getChildren()) {
-            BigDecimal planned = equipmentPlanned(child.getRowKey(), month);
-            if (planned == null) {
-                continue;
-            }
-            child.setTotalCost(planned);
-            child.setBalance(planned.subtract(sumGrantMap(child.getCoverageByGrant())));
-        }
-    }
-
-    private static BigDecimal equipmentPlanned(String rowKey, Integer month) {
-        if ("sprzet-komputerowy".equals(rowKey)) {
-            if (month == null) {
-                return new BigDecimal("15000.00");
-            }
-            return month == 3 || month == 6 || month == 9
-                    ? new BigDecimal("5000.00")
-                    : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
-        if ("sprzet-meble".equals(rowKey)) {
-            if (month == null) {
-                return new BigDecimal("5000.00");
-            }
-            if (month == 4) {
-                return new BigDecimal("3000.00");
-            }
-            if (month == 10) {
-                return new BigDecimal("2000.00");
-            }
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
-        if ("sprzet-inne".equals(rowKey)) {
-            if (month == null) {
-                return new BigDecimal("3500.00");
-            }
-            return month == 12
-                    ? new BigDecimal("3500.00")
-                    : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
-        return null;
-    }
-
-    private static void applyPromotionDefaultPlan(BudgetItemRowDto row, Integer month) {
-        BigDecimal annual = PROMOTION_DEFAULT_ANNUAL.get(row.getRowKey());
-        if (annual == null) {
-            annual = EQUIPMENT_DEFAULT_ANNUAL.get(row.getRowKey());
-        }
-        if (annual == null) {
-            return;
-        }
-        BigDecimal current = row.getTotalCost() != null ? row.getTotalCost() : BigDecimal.ZERO;
-        if (current.signum() != 0) {
-            return;
-        }
-        BigDecimal shown = amountForPeriod(annual, month);
-        row.setTotalCost(shown);
-        row.setBalance(shown.subtract(sumGrantMap(row.getCoverageByGrant())));
     }
 
     private BudgetItemRowDto buildLabeledSubcategoryRow(String rowKey,
@@ -2194,9 +2113,9 @@ public class BudgetMatrixService {
                         key, PROMOTION_ROW_KEY, PROMOTION_LABEL, grantNames, plannedByItem, plannedByItemAndGrant);
                 promotionRow.setChildren(buildLabeledCategorySubcategoryRows(
                         costAllocations, PROMOTION_CODE, PROMOTION_LABEL, PROMOTION_SUBCATEGORIES,
-                        grantNames, grantNameByProjectId, amountScale, month));
+                        grantNames, grantNameByProjectId, amountScale));
                 aggregateFromChildren(promotionRow, grantNames);
-                promotionRow.setExpandable(true);
+                promotionRow.setExpandable(promotionRow.getChildren() != null && !promotionRow.getChildren().isEmpty());
                 yield promotionRow;
             }
             case EQUIPMENT_CODE -> {
@@ -2204,9 +2123,9 @@ public class BudgetMatrixService {
                         key, EQUIPMENT_ROW_KEY, EQUIPMENT_LABEL, grantNames, plannedByItem, plannedByItemAndGrant);
                 equipmentRow.setChildren(buildLabeledCategorySubcategoryRows(
                         costAllocations, EQUIPMENT_CODE, EQUIPMENT_LABEL, EQUIPMENT_SUBCATEGORIES,
-                        grantNames, grantNameByProjectId, amountScale, month));
+                        grantNames, grantNameByProjectId, amountScale));
                 aggregateFromChildren(equipmentRow, grantNames);
-                equipmentRow.setExpandable(true);
+                equipmentRow.setExpandable(equipmentRow.getChildren() != null && !equipmentRow.getChildren().isEmpty());
                 yield equipmentRow;
             }
             default -> {
@@ -2225,10 +2144,6 @@ public class BudgetMatrixService {
                 || PROMOTION_CODE.equals(categoryCode))
                 ? month : null;
         applyStoredSubcategoriesTree(row, grantNames, evenMonth);
-        if (EQUIPMENT_CODE.equals(categoryCode)) {
-            applyEquipmentSchedule(row, month);
-            aggregateFromChildren(row, grantNames);
-        }
         Map<Long, Map<String, AdminSalaryMove>> salaryMoves = salaryRelocations(grants, fiscalYear, month);
         applyPlanCoverage(row, planCoverageBySource(grants, fiscalYear, month), grantNames);
         if (PERSONNEL_CODE.equals(categoryCode)) {

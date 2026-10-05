@@ -167,7 +167,7 @@
                     <p class="text-muted small mb-0 mt-1">Grant finansuje wskazane pozycje budżetu organizacji.</p>
                 </div>
                 <button th:if="${editMode}" type="submit" class="btn btn-primary btn-sm">Zapisz budżet</button>
-                <a th:unless="${editMode}" class="btn btn-primary btn-sm"
+                <a th:if="${canEdit and !editMode}" class="btn btn-primary btn-sm"
                    th:href="@{__${adminBase}__/grants/{id}/budget(id=${grantBudget.grantId},edit=true)}">Edytuj</a>
             </div>
             <div class="card-body p-0 table-responsive">

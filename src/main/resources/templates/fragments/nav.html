@@ -74,10 +74,20 @@
                            th:classappend="${active == 'projects'} ? 'active text-primary' : ''"
                            th:href="@{__${adminBase}__/projects}">Projekty</a>
                     </li>
-                    <li class="nav-item">
+                    <li class="nav-item" th:if="${canEdit}">
                         <a class="nav-link fw-semibold"
                            th:classappend="${active == 'budget-new'} ? 'active text-primary' : ''"
                            th:href="@{__${adminBase}__/budget/new}">Nowy budżet</a>
+                    </li>
+                    <li class="nav-item" th:if="${isAdmin}">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'users'} ? 'active text-primary' : ''"
+                           th:href="@{/admin/users}">Użytkownicy</a>
+                    </li>
+                    <li class="nav-item" th:if="${isAdmin}">
+                        <a class="nav-link fw-semibold"
+                           th:classappend="${active == 'audit'} ? 'active text-primary' : ''"
+                           th:href="@{/admin/dziennik}">Admin</a>
                     </li>
                 </ul>
                 <div class="budget-user-bar ms-md-auto text-nowrap small d-flex align-items-center gap-2"

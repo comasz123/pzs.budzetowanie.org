@@ -3,6 +3,7 @@ package pl.ngo.budget.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -37,8 +38,29 @@ public class SecurityConfig {
 
         http
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/login", "/css/**", "/js/**", "/images/**",
+                .requestMatchers("/login", "/logout", "/css/**", "/js/**", "/images/**",
                         "/favicon.ico", "/favicon-16x16.png", "/favicon-32x32.png", "/apple-touch-icon.png").permitAll()
+                .requestMatchers("/admin/users", "/admin/users/**").hasRole("ADMIN")
+                .requestMatchers("/admin/dziennik", "/admin/dziennik/**").hasRole("ADMIN")
+                .requestMatchers("/dashboard/backup/download", "/realizacja/backup/download").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET,
+                        "/admin/grants/new", "/admin/grants/*/edit",
+                        "/realizacja/grants/new", "/realizacja/grants/*/edit",
+                        "/admin/sponsors/new", "/admin/sponsors/*/edit",
+                        "/realizacja/sponsors/new", "/realizacja/sponsors/*/edit",
+                        "/admin/sponsor-contacts/new", "/admin/sponsor-contacts/*/edit",
+                        "/realizacja/sponsor-contacts/new", "/realizacja/sponsor-contacts/*/edit",
+                        "/admin/employees/new", "/admin/employees/*/edit",
+                        "/realizacja/employees/new", "/realizacja/employees/*/edit",
+                        "/admin/projects/new", "/realizacja/projects/new",
+                        "/admin/budget/new", "/admin/budget/new/**",
+                        "/realizacja/budget/new", "/realizacja/budget/new/**",
+                        "/admin/expenditures/import",
+                        "/realizacja/wydatki/import").hasAnyRole("ADMIN", "EDIT")
+                .requestMatchers(HttpMethod.POST, "/**").hasAnyRole("ADMIN", "EDIT")
+                .requestMatchers(HttpMethod.PUT, "/**").hasAnyRole("ADMIN", "EDIT")
+                .requestMatchers(HttpMethod.PATCH, "/**").hasAnyRole("ADMIN", "EDIT")
+                .requestMatchers(HttpMethod.DELETE, "/**").hasAnyRole("ADMIN", "EDIT")
                 .anyRequest().authenticated()
             )
             .formLogin(form -> form

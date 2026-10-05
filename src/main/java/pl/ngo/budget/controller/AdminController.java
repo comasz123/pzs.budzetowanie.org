@@ -18,6 +18,7 @@ import pl.ngo.budget.entity.coverage.SponsorContact;
 import pl.ngo.budget.repository.*;
 import pl.ngo.budget.dto.GrantBudgetViewDto;
 import pl.ngo.budget.dto.OrgBudgetLineOptionDto;
+import pl.ngo.budget.security.CurrentAccess;
 import pl.ngo.budget.service.BudgetMatrixService;
 import pl.ngo.budget.service.BudgetSetupService;
 import pl.ngo.budget.service.GrantBudgetService;
@@ -47,6 +48,7 @@ public class AdminController {
     private final GrantBudgetService grantBudgetService;
     private final BudgetMatrixService budgetMatrixService;
     private final ViewExcelExportService viewExcelExportService;
+    private final CurrentAccess currentAccess;
 
     public AdminController(GrantRepository grantRepository,
                            SponsorRepository sponsorRepository,
@@ -56,7 +58,8 @@ public class AdminController {
                            BudgetSetupService budgetSetupService,
                            GrantBudgetService grantBudgetService,
                            BudgetMatrixService budgetMatrixService,
-                           ViewExcelExportService viewExcelExportService) {
+                           ViewExcelExportService viewExcelExportService,
+                           CurrentAccess currentAccess) {
         this.grantRepository = grantRepository;
         this.sponsorRepository = sponsorRepository;
         this.sponsorContactRepository = sponsorContactRepository;
@@ -66,6 +69,7 @@ public class AdminController {
         this.grantBudgetService = grantBudgetService;
         this.budgetMatrixService = budgetMatrixService;
         this.viewExcelExportService = viewExcelExportService;
+        this.currentAccess = currentAccess;
     }
 
     // --- Granty ---
@@ -92,7 +96,7 @@ public class AdminController {
                               @RequestParam(required = false) Boolean edit,
                               Model model) {
         model.addAttribute("activeSection", "grants");
-        model.addAttribute("editMode", Boolean.TRUE.equals(edit));
+        model.addAttribute("editMode", currentAccess.editRequested(edit));
         GrantBudgetViewDto grantBudget = grantBudgetService.buildGrantBudgetView(id);
         int fiscalYear = grantBudget.getStartDate() != null
                 ? grantBudget.getStartDate().getYear()

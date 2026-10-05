@@ -11,7 +11,8 @@
 <div class="container-fluid px-4 py-3">
     <div th:replace="~{fragments/admin :: header(${pageTitle}, ${activeSection})}"></div>
 
-    <div class="card shadow-sm">
+    <p th:unless="${canEdit}" class="text-muted">Podgląd. Dodawanie projektów wymaga roli edit albo admin.</p>
+    <div class="card shadow-sm" th:if="${canEdit}">
         <div class="card-body">
             <form th:action="@{__${adminBase}__/projects}" method="post" class="row g-3">
                 <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>

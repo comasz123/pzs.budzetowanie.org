@@ -41,3 +41,9 @@ app.admin.email=admin@example.com
 app.admin.password=CHANGE_ME
 app.admin.first-name=Admin
 app.admin.last-name=User
+
+# Puste = nie twórz konta edycji. Na produkcji ustaw adres Katarzyny.
+app.editor.email=
+app.editor.password=
+app.editor.first-name=
+app.editor.last-name=

@@ -406,9 +406,11 @@
             <span class="text-muted small budget-fs-hide" th:if="${backupInfo != null && backupInfo.available}">
                     Kopia zapasowa:
                     <span th:text="${backupInfo.createdAt != null ? #temporals.format(backupInfo.createdAt, 'dd.MM.yyyy HH:mm') : backupInfo.filename}">—</span>
+                    <th:block th:if="${isAdmin}">
                     ·
                     <a th:href="${monthView} ? @{__${budgetBase}__/backup/download(year=${selectedYear}, month=${selectedMonth})} : @{__${budgetBase}__/backup/download(year=${selectedYear})}"
                        title="Pobierz ostatnią kopię — tylko do odzyskiwania danych">Pobierz kopię</a>
+                    </th:block>
             </span>
             <span class="text-muted small budget-fs-hide" th:if="${backupInfo != null && !backupInfo.available}">
                 Brak kopii zapasowej (pierwsza zostanie utworzona automatycznie)
@@ -417,7 +419,7 @@
                th:href="${monthView} ? @{__${budgetBase}__/export(year=${selectedYear}, month=${selectedMonth})} : @{__${budgetBase}__/export(year=${selectedYear})}"
                th:title="${monthView} ? 'Pobierz tabelę tego miesiąca' : 'Pobierz tabelę tego roku'">Excel</a>
             <a class="btn btn-sm btn-outline-primary"
-               th:if="${budgetBase != '/realizacja' and !editMode and monthView}"
+               th:if="${canEdit and budgetBase != '/realizacja' and !editMode and monthView}"
                th:href="@{__${budgetBase}__/month(year=${selectedYear}, month=${selectedMonth}, edit=true)}">Edycja</a>
             <a class="btn btn-sm btn-primary"
                th:if="${editMode}"

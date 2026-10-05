@@ -5,7 +5,6 @@ backups/
 
 # Lokalne sekrety — wzorzec: application.properties.example
 src/main/resources/application.properties
-src/main/resources/application-pzs.properties
 
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
