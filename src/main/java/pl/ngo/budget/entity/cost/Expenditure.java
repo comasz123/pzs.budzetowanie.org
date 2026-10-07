@@ -65,6 +65,12 @@ public class Expenditure {
     @Column(nullable = false)
     private Integer fiscalYear;
 
+    @Column(nullable = false, columnDefinition = "tinyint(1) not null default 0")
+    private boolean monthClosed = false;
+
+    @Column(nullable = false, columnDefinition = "tinyint(1) not null default 0")
+    private boolean reportClosed = false;
+
     @OneToMany(mappedBy = "expenditure", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<CostAllocation> costAllocations = new ArrayList<>();
 

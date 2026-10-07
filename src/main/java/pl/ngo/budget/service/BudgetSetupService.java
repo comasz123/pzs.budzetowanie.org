@@ -991,6 +991,35 @@ public class BudgetSetupService {
     }
 
     private GrantBudgetItem toBudgetItem(Grant grant, GrantSaveCommand.BudgetItemCommand command) {
+        String selection = command.getSelection() == null ? "" : command.getSelection().trim();
+        if (selection.startsWith("t:")) {
+            try {
+                command.setTemplateId(Long.valueOf(selection.substring(2)));
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+            command.setNewTemplate(false);
+        } else if (selection.startsWith("r:")) {
+            String rowKey = selection.substring(2).trim();
+            if (rowKey.isEmpty()) {
+                return null;
+            }
+            String name = normalize(command.getName());
+            GrantBudgetItem item = new GrantBudgetItem();
+            item.setGrant(grant);
+            item.setName(name != null ? name : rowKey);
+            item.setCode(rowKey);
+            item.setAccountingCode(rowKey);
+            item.setPlannedAmount(command.getPlannedAmount() != null ? command.getPlannedAmount() : BigDecimal.ZERO);
+            item.setActive(true);
+            return item;
+        } else if ("new".equals(selection)) {
+            command.setTemplateId(null);
+            command.setNewTemplate(true);
+        } else if (selection.isEmpty()) {
+            return null;
+        }
+
         String code = normalize(command.getCode());
         String name = normalize(command.getName());
 

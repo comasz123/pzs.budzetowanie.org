@@ -1,7 +1,6 @@
 package pl.ngo.budget.controller;
 
 import org.springframework.security.core.Authentication;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,12 +9,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
-import pl.ngo.budget.model.Organization;
 import pl.ngo.budget.model.Role;
 import pl.ngo.budget.model.User;
 import pl.ngo.budget.repository.RoleRepository;
 import pl.ngo.budget.repository.UserRepository;
 import pl.ngo.budget.security.AppRoles;
+import pl.ngo.budget.service.AuditService;
 
 import java.util.Comparator;
 import java.util.HashSet;
@@ -27,14 +26,14 @@ public class UserAdminController {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final AuditService auditService;
 
     public UserAdminController(UserRepository userRepository,
                                RoleRepository roleRepository,
-                               PasswordEncoder passwordEncoder) {
+                               AuditService auditService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
-        this.passwordEncoder = passwordEncoder;
+        this.auditService = auditService;
     }
 
     @GetMapping
@@ -44,48 +43,10 @@ public class UserAdminController {
                 .toList();
         model.addAttribute("activeSection", "users");
         model.addAttribute("users", users);
+        model.addAttribute("userIps", auditService.latestIpByUsername());
         model.addAttribute("roleLabels", AppRoles.ASSIGNABLE.stream().map(AppRoles::label).toList());
+        model.addAttribute("events", auditService.latest());
         return "admin/users";
-    }
-
-    @PostMapping
-    public String create(@RequestParam String email,
-                         @RequestParam String firstName,
-                         @RequestParam String lastName,
-                         @RequestParam String password,
-                         @RequestParam String role,
-                         Authentication authentication,
-                         RedirectAttributes redirectAttributes) {
-        String normalizedEmail = email == null ? "" : email.trim().toLowerCase();
-        String roleName = AppRoles.fromForm(role);
-        if (normalizedEmail.isBlank() || !normalizedEmail.contains("@")
-                || firstName == null || firstName.isBlank()
-                || lastName == null || lastName.isBlank()
-                || roleName == null) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Uzupełnij e-mail, imię, nazwisko i rolę.");
-            return "redirect:/admin/users";
-        }
-        if (password == null || password.length() < 8) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Hasło musi mieć co najmniej 8 znaków.");
-            return "redirect:/admin/users";
-        }
-        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Konto o tym adresie już istnieje.");
-            return "redirect:/admin/users";
-        }
-        Role assigned = roleRepository.findByName(roleName)
-                .orElseThrow(() -> new IllegalStateException("Brak roli " + roleName));
-        User user = new User();
-        user.setEmail(normalizedEmail);
-        user.setFirstName(firstName.trim());
-        user.setLastName(lastName.trim());
-        user.setPassword(passwordEncoder.encode(password));
-        user.setEnabled(true);
-        user.setRoles(new HashSet<>(java.util.Set.of(assigned)));
-        user.setOrganization(currentOrganization(authentication));
-        userRepository.save(user);
-        redirectAttributes.addFlashAttribute("successMessage", "Dodano konto " + normalizedEmail + ".");
-        return "redirect:/admin/users";
     }
 
     @PostMapping("/{id}/role")
@@ -138,15 +99,6 @@ public class UserAdminController {
         redirectAttributes.addFlashAttribute("successMessage",
                 (enabled ? "Włączono konto " : "Wyłączono konto ") + user.getEmail() + ".");
         return "redirect:/admin/users";
-    }
-
-    private Organization currentOrganization(Authentication authentication) {
-        if (authentication == null) {
-            return null;
-        }
-        return userRepository.findByEmail(authentication.getName())
-                .map(User::getOrganization)
-                .orElse(null);
     }
 
     private boolean isSelf(User user, Authentication authentication) {

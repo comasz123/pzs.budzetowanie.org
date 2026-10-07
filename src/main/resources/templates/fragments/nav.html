@@ -31,6 +31,20 @@
         .budget-user-bar .btn-link:hover {
             text-decoration: underline;
         }
+        .password-change summary {
+            list-style: none;
+            cursor: pointer;
+        }
+        .password-change summary::-webkit-details-marker {
+            display: none;
+        }
+        .password-change-form {
+            position: absolute;
+            left: 0;
+            top: 100%;
+            z-index: 1050;
+            width: 16rem;
+        }
     </style>
     <div class="budget-nav-sticky mb-4 border rounded shadow-sm bg-white">
         <nav class="navbar navbar-light budget-main-nav px-3 py-2 mb-0">
@@ -74,7 +88,7 @@
                            th:classappend="${active == 'projects'} ? 'active text-primary' : ''"
                            th:href="@{__${adminBase}__/projects}">Projekty</a>
                     </li>
-                    <li class="nav-item" th:if="${canEdit}">
+                    <li class="nav-item" th:if="${canEdit and budgetBase != '/realizacja'}">
                         <a class="nav-link fw-semibold"
                            th:classappend="${active == 'budget-new'} ? 'active text-primary' : ''"
                            th:href="@{__${adminBase}__/budget/new}">Nowy budżet</a>
@@ -82,18 +96,31 @@
                     <li class="nav-item" th:if="${isAdmin}">
                         <a class="nav-link fw-semibold"
                            th:classappend="${active == 'users'} ? 'active text-primary' : ''"
-                           th:href="@{/admin/users}">Użytkownicy</a>
-                    </li>
-                    <li class="nav-item" th:if="${isAdmin}">
-                        <a class="nav-link fw-semibold"
-                           th:classappend="${active == 'audit'} ? 'active text-primary' : ''"
-                           th:href="@{/admin/dziennik}">Admin</a>
+                           th:href="@{/admin/users}">Admin</a>
                     </li>
                 </ul>
-                <div class="budget-user-bar ms-md-auto text-nowrap small d-flex align-items-center gap-2"
+                <div class="budget-user-bar ms-md-auto small d-flex align-items-start gap-2"
                      sec:authorize="isAuthenticated()">
                     <span class="text-muted">Zalogowany:</span>
-                    <span class="text-dark fw-semibold" th:text="${currentUserDisplay}">Jan Kowalski</span>
+                    <div class="password-change position-relative d-flex flex-column align-items-start">
+                        <span class="text-dark fw-semibold" th:text="${currentUserDisplay}">Jan Kowalski</span>
+                        <details th:open="${passwordError != null}">
+                            <summary class="btn btn-link btn-sm p-0 text-muted">Zmień hasło</summary>
+                            <form class="password-change-form card shadow-sm border p-2 mt-1 bg-white"
+                                  th:action="@{/account/password}" method="post">
+                                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                                <input class="form-control form-control-sm mb-1" type="password" name="currentPassword"
+                                       placeholder="Obecne hasło" required autocomplete="current-password">
+                                <input class="form-control form-control-sm mb-1" type="password" name="newPassword"
+                                       placeholder="Nowe hasło" minlength="8" required autocomplete="new-password">
+                                <input class="form-control form-control-sm mb-2" type="password" name="confirmPassword"
+                                       placeholder="Powtórz nowe hasło" minlength="8" required autocomplete="new-password">
+                                <button type="submit" class="btn btn-primary btn-sm">Zapisz</button>
+                            </form>
+                        </details>
+                        <div th:if="${passwordMessage}" class="text-success" th:text="${passwordMessage}">Hasło zostało zmienione.</div>
+                        <div th:if="${passwordError}" class="text-danger" th:text="${passwordError}">Błąd</div>
+                    </div>
                     <form th:action="@{/logout}" method="post" class="mb-0">
                         <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
                         <button type="submit" class="btn btn-link btn-sm p-0 text-muted">Wyloguj</button>

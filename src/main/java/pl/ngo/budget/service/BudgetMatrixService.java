@@ -3,6 +3,8 @@ package pl.ngo.budget.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pl.ngo.budget.dto.BudgetDashboardDto;
+import pl.ngo.budget.dto.GrantBudgetChoiceDto;
+import pl.ngo.budget.dto.GrantBudgetChoiceGroupDto;
 import pl.ngo.budget.dto.BudgetDashboardDto.BudgetDisplayRowDto;
 import pl.ngo.budget.dto.BudgetDashboardDto.BudgetItemRowDto;
 import pl.ngo.budget.dto.BudgetRowDetailDto;
@@ -169,6 +171,110 @@ public class BudgetMatrixService {
     @Transactional(readOnly = true)
     public BudgetDashboardDto getBudgetDashboardDataForYear(int fiscalYear) {
         return yearFromMonths(fiscalYear);
+    }
+
+    /** Kategorie budżetu rozwinięte do podkategorii, do wyboru w formularzu grantu. */
+    @Transactional(readOnly = true)
+    public List<GrantBudgetChoiceGroupDto> grantFormBudgetChoices(int fiscalYear) {
+        BudgetDashboardDto dashboard = buildDashboard(fiscalYear, null);
+        List<GrantBudgetChoiceGroupDto> groups = new ArrayList<>();
+        GrantBudgetChoiceGroupDto loose = new GrantBudgetChoiceGroupDto();
+        loose.getOptions().add(GrantBudgetChoiceDto.of("new", "nowa pozycja"));
+        groups.add(loose);
+
+        Set<String> used = new LinkedHashSet<>();
+        used.add("new");
+        for (BudgetDashboardDto.BudgetItemRowDto row : dashboard.getRows()) {
+            if (row.getItemName() == null || row.getItemName().isBlank()) {
+                continue;
+            }
+            GrantBudgetChoiceGroupDto group = new GrantBudgetChoiceGroupDto();
+            BudgetDashboardDto.CategoryOrderInfo order = row.getRowKey() == null
+                    ? null
+                    : dashboard.getCategoryOrderByRowKey().get(row.getRowKey());
+            if (order != null && order.getCategoryId() != null) {
+                addChoice(group.getOptions(), used, "t:" + order.getCategoryId(), row.getItemName());
+            } else if (row.getRowKey() != null && !row.getRowKey().isBlank()) {
+                addChoice(group.getOptions(), used, "r:" + row.getRowKey(), row.getItemName());
+            }
+            appendBudgetSubcategories(group.getOptions(), used,
+                    sortSubcategories(row.getRowKey(), row.getChildren()), null);
+            appendKnownSubcategories(group.getOptions(), used, row.getRowKey());
+            if (!hasSubcategoryChoice(group.getOptions())) {
+                appendAllocationChoices(group.getOptions(), used, row.getAllocations());
+            }
+            if (group.getOptions().isEmpty()) {
+                continue;
+            }
+            boolean expanded = group.getOptions().size() > 1
+                    || group.getOptions().stream().anyMatch(choice -> choice.getValue().startsWith("r:"));
+            if (expanded) {
+                group.setLabel(row.getItemName());
+            }
+            groups.add(group);
+        }
+        return groups;
+    }
+
+    private void appendBudgetSubcategories(List<GrantBudgetChoiceDto> options,
+                                           Set<String> used,
+                                           List<BudgetDashboardDto.BudgetItemRowDto> children,
+                                           String prefix) {
+        if (children == null) {
+            return;
+        }
+        for (BudgetDashboardDto.BudgetItemRowDto child : children) {
+            String name = child.getItemName();
+            if (name == null || name.isBlank() || child.getRowKey() == null || child.getRowKey().isBlank()) {
+                appendBudgetSubcategories(options, used,
+                        sortSubcategories(child.getRowKey(), child.getChildren()), prefix);
+                continue;
+            }
+            String label = prefix == null || prefix.isBlank() ? name : prefix + " — " + name;
+            addChoice(options, used, "r:" + child.getRowKey(), label);
+            List<BudgetDashboardDto.BudgetItemRowDto> nested = sortSubcategories(child.getRowKey(), child.getChildren());
+            if (nested != null && !nested.isEmpty()) {
+                appendBudgetSubcategories(options, used, nested, label);
+            }
+        }
+    }
+
+    private static void appendKnownSubcategories(List<GrantBudgetChoiceDto> options, Set<String> used, String rowKey) {
+        List<LabeledSubcategory> known = switch (rowKey == null ? "" : rowKey) {
+            case PROMOTION_ROW_KEY -> PROMOTION_SUBCATEGORIES;
+            case EQUIPMENT_ROW_KEY -> EQUIPMENT_SUBCATEGORIES;
+            default -> List.of();
+        };
+        for (LabeledSubcategory subcategory : known) {
+            addChoice(options, used, "r:" + subcategory.rowKey(), subcategory.label());
+        }
+    }
+
+    private static boolean hasSubcategoryChoice(List<GrantBudgetChoiceDto> options) {
+        return options.stream().anyMatch(choice -> choice.getValue() != null && choice.getValue().startsWith("r:"));
+    }
+
+    private static void appendAllocationChoices(List<GrantBudgetChoiceDto> options,
+                                                Set<String> used,
+                                                List<CostAllocationDto> allocations) {
+        if (allocations == null) {
+            return;
+        }
+        for (CostAllocationDto allocation : allocations) {
+            String kind = allocation.getAmountEditKind();
+            String ids = allocation.getAmountEditIds();
+            if (kind == null || ids == null || ids.isBlank() || ids.indexOf(',') >= 0) {
+                continue;
+            }
+            addChoice(options, used, "r:" + kind + "-" + ids.trim(), allocation.getItemName());
+        }
+    }
+
+    private static void addChoice(List<GrantBudgetChoiceDto> options, Set<String> used, String value, String label) {
+        if (value == null || value.isBlank() || label == null || label.isBlank() || !used.add(value)) {
+            return;
+        }
+        options.add(GrantBudgetChoiceDto.of(value, label));
     }
 
     /** Roczne kwoty są sumą dwunastu widoków miesiąca, nie osobnym wyliczeniem. */

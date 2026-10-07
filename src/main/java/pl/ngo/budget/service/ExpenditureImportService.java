@@ -104,6 +104,15 @@ public class ExpenditureImportService {
     }
 
     @Transactional
+    public void setStatus(Long expenditureId, boolean monthClosed, boolean reportClosed) {
+        Expenditure expenditure = expenditureRepository.findById(expenditureId)
+                .orElseThrow(() -> new IllegalArgumentException("Wydatek nie istnieje"));
+        expenditure.setMonthClosed(monthClosed);
+        expenditure.setReportClosed(reportClosed);
+        expenditureRepository.save(expenditure);
+    }
+
+    @Transactional
     public void splitAcrossGrants(Long expenditureId, List<Long> grantIds, List<BigDecimal> amounts) {
         if (grantIds == null || amounts == null || grantIds.size() != amounts.size()) {
             throw new IllegalArgumentException("Podaj grant i kwotę dla każdej pozycji.");
@@ -123,7 +132,7 @@ public class ExpenditureImportService {
             sum = sum.add(amount.setScale(2, RoundingMode.HALF_UP));
         }
         if (sum.compareTo(gross) != 0) {
-            throw new IllegalArgumentException("Suma pozycji musi być równa brutto "
+            throw new IllegalArgumentException("Suma pozycji musi być równa netto + VAT "
                     + gross.setScale(2, RoundingMode.HALF_UP).toPlainString().replace('.', ','));
         }
         String categoryCode = expenditure.getBudgetItem() != null ? expenditure.getBudgetItem().getCode() : null;

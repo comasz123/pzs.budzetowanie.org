@@ -5,6 +5,8 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import pl.ngo.budget.dto.GrantBudgetChoiceDto;
+import pl.ngo.budget.dto.GrantBudgetChoiceGroupDto;
 import pl.ngo.budget.dto.GrantBudgetSaveCommand;
 import pl.ngo.budget.dto.GrantSaveCommand;
 import pl.ngo.budget.entity.cost.Employee;
@@ -518,7 +520,44 @@ public class AdminController {
         model.addAttribute("projects", projectRepository.findAll());
         model.addAttribute("employees", employeeRepository.findAll());
         model.addAttribute("contacts", sponsorContactRepository.findAllWithSponsor());
-        model.addAttribute("budgetTemplates", budgetSetupService.listBudgetTemplates());
+        int fiscalYear = grant.getStartDate() != null
+                ? grant.getStartDate().getYear()
+                : LocalDate.now().getYear();
+        GrantSaveCommand command = (GrantSaveCommand) model.getAttribute("grantCommand");
+        List<GrantBudgetChoiceGroupDto> choices = new java.util.ArrayList<>(
+                budgetMatrixService.grantFormBudgetChoices(fiscalYear));
+        keepSavedBudgetChoices(choices, command);
+        model.addAttribute("budgetChoiceGroups", choices);
+    }
+
+    private static void keepSavedBudgetChoices(List<GrantBudgetChoiceGroupDto> groups, GrantSaveCommand command) {
+        if (command == null || command.getBudgetItems() == null) {
+            return;
+        }
+        Set<String> present = new LinkedHashSet<>();
+        for (GrantBudgetChoiceGroupDto group : groups) {
+            for (GrantBudgetChoiceDto choice : group.getOptions()) {
+                present.add(choice.getValue());
+            }
+        }
+        List<GrantBudgetChoiceDto> missing = new java.util.ArrayList<>();
+        for (GrantSaveCommand.BudgetItemCommand item : command.getBudgetItems()) {
+            if (item.getSelection() == null || item.getSelection().isBlank() || present.contains(item.getSelection())) {
+                continue;
+            }
+            String label = item.getName() != null && !item.getName().isBlank()
+                    ? item.getName()
+                    : item.getSelection();
+            missing.add(GrantBudgetChoiceDto.of(item.getSelection(), label));
+            present.add(item.getSelection());
+        }
+        if (missing.isEmpty()) {
+            return;
+        }
+        GrantBudgetChoiceGroupDto saved = new GrantBudgetChoiceGroupDto();
+        saved.setLabel("Zapisane");
+        saved.setOptions(missing);
+        groups.add(saved);
     }
 
     private GrantSaveCommand toGrantSaveCommand(Grant grant) {
@@ -567,11 +606,20 @@ public class AdminController {
                         row.setCode(item.getCode());
                         row.setName(item.getName());
                         row.setPlannedAmount(item.getPlannedAmount());
-                        if (item.getCode() != null) {
-                            row.setTemplateId(templateIdByCode.get(item.getCode().trim().toUpperCase()));
-                        }
-                        if (row.getTemplateId() == null && item.getName() != null) {
-                            row.setTemplateId(templateIdByName.get(item.getName().trim().toUpperCase()));
+                        Long templateByCode = item.getCode() == null
+                                ? null
+                                : templateIdByCode.get(item.getCode().trim().toUpperCase());
+                        Long templateByName = item.getName() == null
+                                ? null
+                                : templateIdByName.get(item.getName().trim().toUpperCase());
+                        if (templateByCode != null && (templateByName == null || templateByCode.equals(templateByName))) {
+                            row.setTemplateId(templateByCode);
+                            row.setSelection("t:" + templateByCode);
+                        } else if (item.getCode() != null && !item.getCode().isBlank()) {
+                            row.setSelection("r:" + item.getCode().trim());
+                        } else if (templateByName != null) {
+                            row.setTemplateId(templateByName);
+                            row.setSelection("t:" + templateByName);
                         }
                         command.getBudgetItems().add(row);
                     });

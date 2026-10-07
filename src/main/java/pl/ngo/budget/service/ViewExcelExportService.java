@@ -193,9 +193,10 @@ public class ViewExcelExportService {
         try (ExcelTables excel = ExcelTables.create()) {
             Sheet sheet = excel.sheet(PolishMonthNames.of(month) + " " + fiscalYear);
             excel.headers(sheet, "Nr dokumentu", "Data wystawienia", "Data płatności", "Opis",
-                    "Kategoria", "Netto", "Brutto", "Grant", "Projekt");
+                    "Kategoria", "Netto", "VAT", "netto + VAT", "Grant", "Projekt", "Miesiąc", "Raport");
             int rowIndex = 1;
             BigDecimal net = BigDecimal.ZERO;
+            BigDecimal vat = BigDecimal.ZERO;
             BigDecimal gross = BigDecimal.ZERO;
             for (Expenditure expenditure : expenditures) {
                 Row row = sheet.createRow(rowIndex++);
@@ -205,11 +206,17 @@ public class ViewExcelExportService {
                 excel.text(row, 3, expenditure.getDescription());
                 excel.text(row, 4, expenditure.getBudgetItem() != null ? expenditure.getBudgetItem().getCode() : "");
                 excel.money(row, 5, expenditure.getNetAmount());
-                excel.money(row, 6, expenditure.getGrossAmount());
-                excel.text(row, 7, grantLabel(expenditure));
-                excel.text(row, 8, projectName(expenditure));
+                excel.money(row, 6, expenditure.getVatAmount());
+                excel.money(row, 7, expenditure.getGrossAmount());
+                excel.text(row, 8, grantLabel(expenditure));
+                excel.text(row, 9, projectName(expenditure));
+                excel.text(row, 10, expenditure.isMonthClosed() ? "zamknięty" : "otwarty");
+                excel.text(row, 11, expenditure.isReportClosed() ? "zamknięty" : "otwarty");
                 if (expenditure.getNetAmount() != null) {
                     net = net.add(expenditure.getNetAmount());
+                }
+                if (expenditure.getVatAmount() != null) {
+                    vat = vat.add(expenditure.getVatAmount());
                 }
                 if (expenditure.getGrossAmount() != null) {
                     gross = gross.add(expenditure.getGrossAmount());
@@ -218,8 +225,9 @@ public class ViewExcelExportService {
             Row total = sheet.createRow(rowIndex);
             excel.bold(total, 0, "Razem");
             excel.moneyBold(total, 5, net);
-            excel.moneyBold(total, 6, gross);
-            excel.layout(sheet, rowIndex, 8, 22);
+            excel.moneyBold(total, 6, vat);
+            excel.moneyBold(total, 7, gross);
+            excel.layout(sheet, rowIndex, 11, 22);
             excel.write(output);
         }
     }

@@ -66,6 +66,7 @@ public class ExpenditureController {
         model.addAttribute("countsByMonth", countsByMonth);
         model.addAttribute("totalInMonth", expenditures.size());
         model.addAttribute("totalNet", sum(expenditures, Expenditure::getNetAmount));
+        model.addAttribute("totalVat", sum(expenditures, Expenditure::getVatAmount));
         model.addAttribute("totalGross", sum(expenditures, Expenditure::getGrossAmount));
         model.addAttribute("grants", expenditureImportService.listGrants());
         model.addAttribute("projects", expenditureImportService.listProjects());
@@ -112,6 +113,22 @@ public class ExpenditureController {
                                 RedirectAttributes redirectAttributes) {
         try {
             expenditureImportService.assignProject(id, projectId);
+        } catch (Exception ex) {
+            redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
+        }
+        return redirectToList(year, month, edit, null);
+    }
+
+    @PostMapping("/{id}/status")
+    public String setStatus(@PathVariable Long id,
+                            @RequestParam boolean monthClosed,
+                            @RequestParam boolean reportClosed,
+                            @RequestParam int year,
+                            @RequestParam int month,
+                            @RequestParam(value = "edit", required = false) Boolean edit,
+                            RedirectAttributes redirectAttributes) {
+        try {
+            expenditureImportService.setStatus(id, monthClosed, reportClosed);
         } catch (Exception ex) {
             redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
         }

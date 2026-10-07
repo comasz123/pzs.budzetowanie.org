@@ -93,13 +93,27 @@
                         <div class="d-flex gap-2 align-items-center budget-item-select-row"
                              th:each="item, stat : *{budgetItems}">
                             <select class="form-select budget-item-select"
-                                    th:name="|budgetItems[${stat.index}].templateId|">
+                                    th:name="|budgetItems[${stat.index}].selection|">
                                 <option value="">— wybierz pozycję —</option>
-                                <option th:each="t : ${budgetTemplates}"
-                                        th:value="${t.id}"
-                                        th:selected="${item.templateId != null and item.templateId == t.id}"
-                                        th:text="${t.name}">Pozycja</option>
+                                <th:block th:each="group : ${budgetChoiceGroups}">
+                                    <option th:if="${group.label == null}"
+                                            th:each="choice : ${group.options}"
+                                            th:value="${choice.value}"
+                                            th:selected="${item.selection == choice.value}"
+                                            th:text="${choice.label}">nowa pozycja</option>
+                                    <optgroup th:if="${group.label != null}" th:label="${group.label}">
+                                        <option th:each="choice : ${group.options}"
+                                                th:value="${choice.value}"
+                                                th:selected="${item.selection == choice.value}"
+                                                th:text="${choice.label}">Podkategoria</option>
+                                    </optgroup>
+                                </th:block>
                             </select>
+                            <input class="form-control budget-item-name"
+                                   th:classappend="${item.selection != 'new'} ? 'd-none' : ''"
+                                   th:name="|budgetItems[${stat.index}].name|"
+                                   th:value="${item.selection == 'new' ? item.name : ''}"
+                                   placeholder="Nazwa nowej pozycji">
                             <button type="button" class="btn btn-outline-danger btn-sm remove-budget-item" title="Usuń">×</button>
                         </div>
                     </div>
@@ -167,39 +181,76 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script th:inline="javascript">
 (() => {
-    const budgetTemplates = /*[[${budgetTemplates}]]*/ [];
+    const budgetChoiceGroups = /*[[${budgetChoiceGroups}]]*/ [];
     const budgetContainer = document.getElementById('budgetItemSelects');
     const tranchesBody = document.getElementById('tranchesBody');
     const form = document.getElementById('grantForm');
 
-    function budgetOptionsHtml(selectedId) {
-        const selected = selectedId == null ? '' : String(selectedId);
+    function budgetOptionsHtml(selectedValue) {
+        const selected = selectedValue == null ? '' : String(selectedValue);
         let html = '<option value="">— wybierz pozycję —</option>';
-        for (const template of budgetTemplates) {
-            const id = String(template.id);
-            const name = template.name || '';
-            html += `<option value="${id}" ${id === selected ? 'selected' : ''}>${escapeHtml(name)}</option>`;
+        for (const group of budgetChoiceGroups) {
+            const options = group.options || [];
+            if (!group.label) {
+                for (const choice of options) {
+                    html += optionHtml(choice, selected);
+                }
+                continue;
+            }
+            html += `<optgroup label="${escapeHtml(group.label)}">`;
+            for (const choice of options) {
+                html += optionHtml(choice, selected);
+            }
+            html += '</optgroup>';
         }
         return html;
     }
 
-    function addBudgetSelect(selectedId) {
+    function optionHtml(choice, selected) {
+        const value = String(choice.value ?? '');
+        const label = choice.label || '';
+        return `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }
+
+    function addBudgetSelect(selectedValue) {
         const row = document.createElement('div');
         row.className = 'd-flex gap-2 align-items-center budget-item-select-row';
         row.innerHTML = `
-            <select class="form-select budget-item-select">${budgetOptionsHtml(selectedId)}</select>
+            <select class="form-select budget-item-select">${budgetOptionsHtml(selectedValue)}</select>
+            <input class="form-control budget-item-name d-none" placeholder="Nazwa nowej pozycji">
             <button type="button" class="btn btn-outline-danger btn-sm remove-budget-item" title="Usuń">×</button>`;
         budgetContainer.appendChild(row);
         reindexBudget();
+        applyBudgetSelection(row);
         row.querySelector('select')?.focus();
+    }
+
+    function applyBudgetSelection(row) {
+        const select = row.querySelector('select');
+        const nameInput = row.querySelector('.budget-item-name');
+        if (!select || !nameInput) {
+            return;
+        }
+        const isNew = select.value === 'new';
+        nameInput.classList.toggle('d-none', !isNew);
+        nameInput.required = isNew;
+        if (!isNew) {
+            const option = select.selectedOptions[0];
+            nameInput.value = select.value.startsWith('r:') ? (option?.textContent || '').trim() : '';
+        }
     }
 
     function reindexBudget() {
         budgetContainer.querySelectorAll('.budget-item-select-row').forEach((row, index) => {
             const select = row.querySelector('select');
+            const nameInput = row.querySelector('.budget-item-name');
             if (select) {
-                select.name = `budgetItems[${index}].templateId`;
+                select.name = `budgetItems[${index}].selection`;
             }
+            if (nameInput) {
+                nameInput.name = `budgetItems[${index}].name`;
+            }
+            applyBudgetSelection(row);
         });
     }
 
@@ -254,6 +305,13 @@
     }
 
     document.getElementById('addBudgetItemBtn')?.addEventListener('click', () => addBudgetSelect(''));
+    budgetContainer.addEventListener('change', (event) => {
+        const select = event.target.closest('.budget-item-select');
+        if (!select) {
+            return;
+        }
+        applyBudgetSelection(select.closest('.budget-item-select-row'));
+    });
     document.getElementById('addTrancheBtn')?.addEventListener('click', addTrancheRow);
 
     budgetContainer.addEventListener('click', (event) => {
@@ -288,6 +346,8 @@
 
     if (budgetContainer.querySelectorAll('.budget-item-select-row').length === 0) {
         addBudgetSelect('');
+    } else {
+        reindexBudget();
     }
     reindexTranches();
 })();

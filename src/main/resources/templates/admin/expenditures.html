@@ -9,6 +9,20 @@
         .wydatki-table { font-size: 0.8125rem; }
         .wydatki-table .form-select,
         .wydatki-table .form-control { font-size: 0.8125rem; }
+        .wydatki-table tr.expenditure-month-closed {
+            --bs-table-color: #0b1f4d;
+            --bs-table-hover-color: #0b1f4d;
+        }
+        .wydatki-table tr.expenditure-month-closed .form-select {
+            color: #0b1f4d;
+        }
+        .wydatki-table tr.expenditure-report-closed {
+            --bs-table-color: #5c1020;
+            --bs-table-hover-color: #5c1020;
+        }
+        .wydatki-table tr.expenditure-report-closed .form-select {
+            color: #5c1020;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -79,15 +93,17 @@
                     <th>Opis</th>
                     <th>Kategoria</th>
                     <th class="text-end">Netto</th>
-                    <th class="text-end">Brutto</th>
+                    <th class="text-end">VAT</th>
+                    <th class="text-end">netto + VAT</th>
                     <th>Grant</th>
                     <th>Projekt</th>
+                    <th>Stan</th>
                     <th th:if="${editMode}"></th>
                 </tr>
                 </thead>
                 <tbody>
                 <tr th:if="${expenditures.isEmpty()}">
-                    <td class="text-muted text-center py-4" th:colspan="${editMode} ? 10 : 9">
+                    <td class="text-muted text-center py-4" th:colspan="${editMode} ? 12 : 11">
                         Brak wydatków w tym miesiącu.
                         <a th:href="@{__${expenditureBase}__/import(year=${fiscalYear}, month=${selectedMonth})}">
                             Importuj z Excel
@@ -95,13 +111,14 @@
                     </td>
                 </tr>
                 <th:block th:each="exp : ${expenditures}">
-                <tr>
+                <tr th:classappend="${exp.reportClosed} ? 'expenditure-report-closed' : (${exp.monthClosed} ? 'expenditure-month-closed' : '')">
                     <td th:text="${exp.documentNumber}">FV/2026/0001</td>
                     <td th:text="${exp.issueDate}">2026-01-15</td>
                     <td th:text="${exp.paymentDate} ?: '—'">2026-01-20</td>
                     <td th:text="${exp.description}">Opis</td>
                     <td th:text="${exp.budgetItem.code}">KOSZT_ADM</td>
                     <td class="text-end" th:text="${#numbers.formatDecimal(exp.netAmount, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
+                    <td class="text-end" th:text="${#numbers.formatDecimal(exp.vatAmount != null ? exp.vatAmount : 0, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
                     <td class="text-end" th:text="${#numbers.formatDecimal(exp.grossAmount, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
                     <td>
                         <div th:if="${!exp.grantShares.isEmpty()}">
@@ -141,14 +158,41 @@
                             </select>
                         </form>
                     </td>
+                    <td class="text-nowrap">
+                        <div th:unless="${editMode}">
+                            <div th:text="${'miesiąc: ' + (exp.monthClosed ? 'zamknięty' : 'otwarty')}">miesiąc: otwarty</div>
+                            <div th:text="${'raport: ' + (exp.reportClosed ? 'zamknięty' : 'otwarty')}">raport: otwarty</div>
+                        </div>
+                        <form th:if="${editMode}" method="post" th:action="@{__${expenditureBase}__/{id}/status(id=${exp.id})}">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <input type="hidden" name="year" th:value="${fiscalYear}"/>
+                            <input type="hidden" name="month" th:value="${selectedMonth}"/>
+                            <input type="hidden" name="edit" value="true"/>
+                            <label class="d-flex align-items-center gap-1 mb-1">
+                                <span>miesiąc</span>
+                                <select class="form-select form-select-sm" name="monthClosed" onchange="this.form.submit()" aria-label="Stan miesiąca">
+                                    <option value="false" th:selected="${!exp.monthClosed}">otwarty</option>
+                                    <option value="true" th:selected="${exp.monthClosed}">zamknięty</option>
+                                </select>
+                            </label>
+                            <label class="d-flex align-items-center gap-1 mb-0">
+                                <span>raport</span>
+                                <select class="form-select form-select-sm" name="reportClosed" onchange="this.form.submit()" aria-label="Stan raportu">
+                                    <option value="false" th:selected="${!exp.reportClosed}">otwarty</option>
+                                    <option value="true" th:selected="${exp.reportClosed}">zamknięty</option>
+                                </select>
+                            </label>
+                        </form>
+                    </td>
                     <td th:if="${editMode}" class="text-end">
                         <a class="btn btn-sm"
                            th:classappend="${splitId == exp.id} ? 'btn-primary' : 'btn-outline-secondary'"
                            th:href="@{__${expenditureBase}__(year=${fiscalYear}, month=${selectedMonth}, edit=true, split=${exp.id})}">Split</a>
                     </td>
                 </tr>
-                <tr th:if="${editMode and splitId == exp.id}">
-                    <td colspan="10" class="bg-light">
+                <tr th:if="${editMode and splitId == exp.id}"
+                    th:classappend="${exp.reportClosed} ? 'expenditure-report-closed' : (${exp.monthClosed} ? 'expenditure-month-closed' : '')">
+                    <td colspan="12" class="bg-light">
                         <form class="split-form py-2" method="post"
                               th:action="@{__${expenditureBase}__/{id}/split(id=${exp.id})}"
                               th:attr="data-gross=${exp.grossAmount}"
@@ -166,7 +210,7 @@
                                         th:classappend="${shareCount == 3 ? 'btn-primary' : 'btn-outline-secondary'}"
                                         data-count="3" onclick="setSplitParts(this, 3)">3</button>
                                 <span class="text-muted">
-                                    Suma brutto
+                                    Suma netto + VAT
                                     <span th:text="${#numbers.formatDecimal(exp.grossAmount, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</span>
                                 </span>
                             </div>
@@ -186,7 +230,7 @@
                                 </div>
                                 <div class="col-md-3">
                                     <input class="form-control form-control-sm" name="amount" inputmode="decimal"
-                                           placeholder="Kwota brutto"
+                                           placeholder="Kwota netto + VAT"
                                            th:value="${share != null ? share.amount : ''}"/>
                                 </div>
                             </div>
@@ -207,7 +251,9 @@
                 <tr class="table-secondary fw-semibold">
                     <td colspan="5">Razem</td>
                     <td class="text-end" th:text="${#numbers.formatDecimal(totalNet, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
+                    <td class="text-end" th:text="${#numbers.formatDecimal(totalVat, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
                     <td class="text-end" th:text="${#numbers.formatDecimal(totalGross, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</td>
+                    <td></td>
                     <td></td>
                     <td></td>
                     <td th:if="${editMode}"></td>

@@ -13,6 +13,17 @@ public interface AuditEventRepository extends JpaRepository<AuditEvent, Long> {
 
     List<AuditEvent> findTop500ByOrderByCreatedAtDesc();
 
+    @Query("""
+            select e from AuditEvent e
+            where e.username is not null and e.ip is not null
+              and e.id = (
+                  select max(later.id) from AuditEvent later
+                  where lower(later.username) = lower(e.username)
+                    and later.ip is not null
+              )
+            """)
+    List<AuditEvent> findLatestIpPerUsername();
+
     @Modifying
     @Query("delete from AuditEvent e where e.createdAt < :cutoff")
     int deleteOlderThan(@Param("cutoff") LocalDateTime cutoff);

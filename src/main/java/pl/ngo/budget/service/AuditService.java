@@ -11,8 +11,10 @@ import pl.ngo.budget.repository.AuditEventRepository;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -34,6 +36,18 @@ public class AuditService {
     @Transactional(readOnly = true)
     public List<AuditEvent> latest() {
         return auditEventRepository.findTop500ByOrderByCreatedAtDesc();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, String> latestIpByUsername() {
+        Map<String, String> ips = new HashMap<>();
+        for (AuditEvent event : auditEventRepository.findLatestIpPerUsername()) {
+            if (event.getUsername() == null || event.getIp() == null || event.getIp().isBlank()) {
+                continue;
+            }
+            ips.put(event.getUsername().toLowerCase(Locale.ROOT), event.getIp());
+        }
+        return ips;
     }
 
     @Transactional
@@ -158,6 +172,9 @@ public class AuditService {
         if (path.endsWith("/project")) {
             return "Przypisanie projektu do wydatku";
         }
+        if (path.endsWith("/status")) {
+            return "Zmiana stanu wydatku";
+        }
         if (path.endsWith("/import")) {
             return "Import wydatków";
         }
@@ -167,8 +184,8 @@ public class AuditService {
         if (path.contains("/admin/users/") && path.endsWith("/enabled")) {
             return "Zmiana statusu konta";
         }
-        if (path.endsWith("/admin/users")) {
-            return "Nowe konto";
+        if (path.endsWith("/account/password")) {
+            return "Zmiana własnego hasła";
         }
         return "Zapis " + path;
     }
@@ -190,7 +207,11 @@ public class AuditService {
     }
 
     private static void appendParam(List<String> parts, HttpServletRequest request, String name) {
-        if (name == null || SKIPPED_PARAMS.contains(name.toLowerCase(Locale.ROOT))) {
+        if (name == null) {
+            return;
+        }
+        String lowerName = name.toLowerCase(Locale.ROOT);
+        if (lowerName.contains("password") || SKIPPED_PARAMS.contains(lowerName)) {
             return;
         }
         String value = request.getParameter(name);

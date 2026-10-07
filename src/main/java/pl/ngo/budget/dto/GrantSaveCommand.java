@@ -31,6 +31,8 @@ public class GrantSaveCommand {
     @Getter
     @Setter
     public static class BudgetItemCommand {
+        /** t:{templateId}, r:{rowKey} or new. */
+        private String selection;
         private Long templateId;
         private boolean newTemplate;
         private String code;
