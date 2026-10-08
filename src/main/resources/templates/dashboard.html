@@ -53,6 +53,29 @@
             text-align: end;
             vertical-align: bottom;
         }
+
+        /* Pozycja kosztowa, planowany koszt i bilans zawsze widoczne; projekty przewijają się pomiędzy nimi. */
+        #budget-matrix-table { width: max-content; min-width: 100%; }
+        #budget-matrix-table .col-label {
+            width: 13rem; min-width: 13rem; max-width: 13rem;
+            word-break: normal; overflow-wrap: normal; hyphens: none;
+        }
+        #budget-matrix-table .col-sticky-planned,
+        #budget-matrix-table .col-sticky-balance {
+            position: sticky; z-index: 2; min-width: 6.5rem; background: #fff;
+        }
+        #budget-matrix-table .col-sticky-planned { left: 13rem; }
+        #budget-matrix-table .col-sticky-balance { right: 0; box-shadow: -2px 0 0 #dee2e6; }
+        #budget-matrix-table thead th.col-sticky-planned,
+        #budget-matrix-table thead th.col-sticky-balance { z-index: 4; background: #212529; }
+        #budget-matrix-table tr.budget-totals-row td.col-sticky-planned,
+        #budget-matrix-table tr.budget-totals-row td.col-sticky-balance { background: #e2e3e5; }
+        #budget-matrix-table tr.grant-remaining-row td.col-sticky-planned,
+        #budget-matrix-table tr.grant-remaining-row td.col-sticky-balance,
+        #budget-matrix-table tr.grant-year-split td.col-sticky-planned,
+        #budget-matrix-table tr.grant-year-split td.col-sticky-balance { background: #f8f9fa; }
+        #budget-matrix-table .col-grant-header,
+        #budget-matrix-table td.col-amount { min-width: 5.5rem; }
         .grant-remaining-label {
             font-size: 0.58rem;
             font-weight: 500;
@@ -397,7 +420,7 @@
                 <span th:if="${monthView}" th:text="${selectedMonthName}">Styczeń</span>
             </div>
             <span class="text-muted small" th:if="${editMode and monthView}">
-                Zmień kwoty w kolumnie Planowany Koszt. Wynagrodzenia i koszty administracyjne są takie same w każdym miesiącu. Kategorie edytuje się w budżecie rocznym.
+                Zmień kwoty w kolumnie Planowany Koszt. Każdy miesiąc edytujesz osobno, także wynagrodzenia i koszty administracyjne; kwota roczna to suma miesięcy. Kategorie edytuje się w budżecie rocznym.
             </span>
             <span class="text-muted small budget-edit-only" th:if="${editMode and !monthView}">
                 Kliknij kategorię, aby edytować podpozycje w oknie. Nową kategorię główną dodaj na dole listy.
@@ -419,8 +442,8 @@
                th:href="${monthView} ? @{__${budgetBase}__/export(year=${selectedYear}, month=${selectedMonth})} : @{__${budgetBase}__/export(year=${selectedYear})}"
                th:title="${monthView} ? 'Pobierz tabelę tego miesiąca' : 'Pobierz tabelę tego roku'">Excel</a>
             <a class="btn btn-sm btn-outline-primary"
-               th:if="${canEdit and budgetBase != '/realizacja' and !editMode and monthView}"
-               th:href="@{__${budgetBase}__/month(year=${selectedYear}, month=${selectedMonth}, edit=true)}">Edycja</a>
+               th:if="${canEdit and budgetBase != '/realizacja' and !editMode}"
+               th:href="${monthView} ? @{__${budgetBase}__/month(year=${selectedYear}, month=${selectedMonth}, edit=true)} : @{__${budgetBase}__(year=${selectedYear}, edit=true)}">Edycja</a>
             <a class="btn btn-sm btn-primary"
                th:if="${editMode}"
                id="budgetFinishEditBtn"
@@ -451,10 +474,10 @@
                 <thead class="table-dark sticky-top">
                     <tr>
                         <th class="col-label">Pozycja / Koszt</th>
-                        <th class="text-end col-amount-header budget-view-amount-col"
+                        <th class="text-end col-amount-header budget-view-amount-col col-sticky-planned"
                             th:text="${budgetBase == '/realizacja'} ? 'Wydatki' : 'Planowany Koszt'">Planowany Koszt</th>
                         <th th:each="grant : ${budgetData.grantNames}" class="text-end col-grant-header budget-view-amount-col" th:text="${grant}">Grant</th>
-                        <th class="text-end col-amount-header budget-view-amount-col">Bilans</th>
+                        <th class="text-end col-amount-header budget-view-amount-col col-sticky-balance">Bilans</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -503,7 +526,7 @@
                                 </form>
                             </div>
                         </td>
-                        <td class="text-end col-amount budget-view-amount-col"
+                        <td class="text-end col-amount budget-view-amount-col col-sticky-planned"
                             th:classappend="${row.depth == 0 ? 'fw-bold' : ''}">
                             <input th:if="${monthView and editMode and row.amountEditable}"
                                    type="text"
@@ -516,15 +539,16 @@
                         </td>
                         <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount budget-view-amount-col"
                             th:text="${row.coverageByGrant.get(grant) != null && row.coverageByGrant.get(grant) > 0 ? #numbers.formatDecimal(row.coverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
-                        <td class="text-end col-amount budget-view-amount-col" th:classappend="${row.balance != null && row.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
+                        <td class="text-end col-amount budget-view-amount-col col-sticky-balance"
+                            th:classappend="${row.balance != null && row.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
                             th:text="${row.balance != null ? #numbers.formatDecimal(row.balance, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0.00</td>
                     </tr>
                     <tr class="table-secondary fw-semibold budget-totals-row">
                         <td class="col-label" th:text="${budgetBase == '/realizacja'} ? 'Razem' : 'Razem (plan)'">Razem (plan)</td>
-                        <td class="text-end col-amount" th:text="${#numbers.formatDecimal(budgetData.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                        <td class="text-end col-amount col-sticky-planned" th:text="${#numbers.formatDecimal(budgetData.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
                         <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
                             th:text="${budgetData.totalCoverageByGrant.get(grant) != null && budgetData.totalCoverageByGrant.get(grant).signum() > 0 ? #numbers.formatDecimal(budgetData.totalCoverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
-                        <td class="text-end col-amount"
+                        <td class="text-end col-amount col-sticky-balance"
                             th:classappend="${budgetData.balance != null && budgetData.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
                             th:text="${#numbers.formatDecimal(budgetData.balance, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
                     </tr>
@@ -572,6 +596,7 @@
     const budgetBase = /*[[${budgetBase}]]*/ '/dashboard';
     const budgetSelectedMonth = document.getElementById('budget-selected-month')?.value || '';
     const budgetEditMode = /*[[${editMode}]]*/ false;
+    const budgetDashboardYear = /*[[${selectedYear}]]*/ 0;
     const budgetCsrfToken = /*[[${_csrf != null ? _csrf.token : ''}]]*/ '';
     const budgetCsrfParameter = /*[[${_csrf != null ? _csrf.parameterName : '_csrf'}]]*/ '_csrf';
 

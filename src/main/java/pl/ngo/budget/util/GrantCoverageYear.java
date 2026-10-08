@@ -22,6 +22,9 @@ public final class GrantCoverageYear {
         if (coverage == null) {
             return null;
         }
+        if (coverage.hasMonthlyAmounts()) {
+            return coverage.monthlyAmount(fiscalYear, null);
+        }
         if (!splits(grant)) {
             return coverage.getCoveredAmount();
         }

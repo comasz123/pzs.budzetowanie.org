@@ -1,10 +1,13 @@
 package pl.ngo.budget.entity.coverage;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
 
 @Entity
 @Table(name = "grant_budget_item_coverages")
@@ -44,4 +47,34 @@ public class GrantBudgetItemCoverage {
      */
     @Column(precision = 12, scale = 2)
     private BigDecimal coveredAmount2027;
+
+    /**
+     * Rzeczywiste kwoty pokrycia w miesiącach (klucz rrrrmm, np. 202603). Gdy są ustawione, mają
+     * pierwszeństwo przed równym podziałem {@link #coveredAmount} na miesiące aktywności grantu.
+     */
+    @ElementCollection
+    @CollectionTable(name = "grant_coverage_months", joinColumns = @JoinColumn(name = "coverage_id"))
+    @MapKeyColumn(name = "period_key")
+    @Column(name = "amount", precision = 12, scale = 2)
+    @BatchSize(size = 200)
+    private Map<Integer, BigDecimal> monthlyAmounts = new HashMap<>();
+
+    public static int periodKey(int year, int month) {
+        return year * 100 + month;
+    }
+
+    public boolean hasMonthlyAmounts() {
+        return monthlyAmounts != null && !monthlyAmounts.isEmpty();
+    }
+
+    /** Kwota w danym miesiącu; dla {@code month == null} suma miesięcy danego roku. */
+    public BigDecimal monthlyAmount(int year, Integer month) {
+        if (month != null) {
+            return monthlyAmounts.get(periodKey(year, month));
+        }
+        return monthlyAmounts.entrySet().stream()
+                .filter(e -> e.getKey() / 100 == year)
+                .map(Map.Entry::getValue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
 }

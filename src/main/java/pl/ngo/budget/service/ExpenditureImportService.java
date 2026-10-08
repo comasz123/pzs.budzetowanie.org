@@ -642,7 +642,7 @@ public class ExpenditureImportService {
         }
         return grant.getBudgetItems().stream()
                 .filter(item -> categoryCode.equals(item.getCode()))
-                .findFirst()
+                .min(java.util.Comparator.comparingInt(item -> item.getParent() == null ? 0 : 1))
                 .orElse(null);
     }
 

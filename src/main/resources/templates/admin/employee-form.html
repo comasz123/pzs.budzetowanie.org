@@ -35,6 +35,14 @@
                            th:value="${employee.plannedCost != null ? #numbers.formatDecimal(employee.plannedCost, 1, 'WHITESPACE', 2, 'COMMA') : ''}"/>
                 </div>
                 <div class="col-md-4">
+                    <label class="form-label">Rodzaj umowy</label>
+                    <select class="form-select" name="contractType">
+                        <option value="">—</option>
+                        <option th:each="type : ${contractTypes}" th:value="${type.name()}" th:text="${type.label}"
+                                th:selected="${employee.contractType == type}">Umowa</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
                     <label class="form-label">E-mail</label>
                     <input class="form-control" type="email" name="email" th:value="${employee.email}"/>
                 </div>

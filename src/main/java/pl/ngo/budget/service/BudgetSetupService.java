@@ -142,6 +142,7 @@ public class BudgetSetupService {
             commands = List.of();
         }
         Map<String, GrantBudgetItem> existingByKey = grant.getBudgetItems().stream()
+                .filter(item -> item.getParent() == null)
                 .collect(Collectors.toMap(this::budgetItemKey, Function.identity(), (a, b) -> a, LinkedHashMap::new));
         Set<GrantBudgetItem> keep = new HashSet<>();
         Set<String> usedKeys = new HashSet<>();
@@ -166,7 +167,13 @@ public class BudgetSetupService {
                 keep.add(item);
             }
         }
-        grant.getBudgetItems().removeIf(item -> !keep.contains(item));
+        // Podpozycje i pozycje mające podpozycje zmienia się tylko na stronie budżetu grantu.
+        Set<GrantBudgetItem> withChildren = grant.getBudgetItems().stream()
+                .map(GrantBudgetItem::getParent)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        grant.getBudgetItems().removeIf(item -> !keep.contains(item)
+                && item.getParent() == null && !withChildren.contains(item));
     }
 
     @Transactional
@@ -388,10 +395,15 @@ public class BudgetSetupService {
             case "travel" -> updateTravelAmounts(parseIds(ids), MonthlySplit.annualFromShare(displayed));
             case "event" -> updateEventAmount(year, month, parseIds(ids), displayed);
             case "employee" -> {
-                BigDecimal annual = MonthlySplit.annualFromShare(displayed);
                 List<Long> employeeIds = parseIds(ids);
-                updateEmployeeAmount(employeeIds, annual);
-                syncEmployeeSalaryAllocations(employeeIds.get(0), annual);
+                if (monthlyPlan && hasMonthlyPersonnelPlan(employeeIds.get(0), year)) {
+                    // Pensja z planu miesięcznego: zmiana dotyczy tylko tego miesiąca.
+                    updateEmployeeMonthAmount(employeeIds.get(0), year, month, displayed);
+                } else {
+                    BigDecimal annual = MonthlySplit.annualFromShare(displayed);
+                    updateEmployeeAmount(employeeIds, annual);
+                    syncEmployeeSalaryAllocations(employeeIds.get(0), annual);
+                }
             }
             case "subcategory" -> updateSubcategoryAmount(ids, displayed);
             default -> throw new IllegalArgumentException("Nieobsługiwana pozycja");
@@ -529,7 +541,8 @@ public class BudgetSetupService {
                 continue;
             }
             if (monthlyPlan) {
-                applyEqualMonthlyShare(row, row.getAmount());
+                // Każdy miesiąc osobno: roczna kwota pozycji to suma miesięcy.
+                recomputeAnnualFromMonths(row);
             } else {
                 row.setSplitToMonths(true);
                 costAllocationRepository.save(row);
@@ -748,6 +761,66 @@ public class BudgetSetupService {
                 .orElseThrow(() -> new IllegalArgumentException("Pracownik nie istnieje"));
         employee.setPlannedCost(sum);
         employeeRepository.save(employee);
+    }
+
+    private boolean hasMonthlyPersonnelPlan(Long employeeId, int year) {
+        return personnelRows(employeeId, year).stream().anyMatch(row -> row.getPlanMonth() != null);
+    }
+
+    private List<CostAllocation> personnelRows(Long employeeId, int year) {
+        return costAllocationRepository.findAllPlanAllocationsByFiscalYear(year).stream()
+                .filter(row -> isPersonnelAllocation(row) && matchesEmployee(row, employeeId)
+                        && !GrantBudgetService.isSalaryCoveragePlan(row))
+                .toList();
+    }
+
+    /** Zmienia pensję pracownika tylko w jednym miesiącu; roczna kwota i planowany koszt liczą się z miesięcy. */
+    private void updateEmployeeMonthAmount(Long employeeId, int year, int month, BigDecimal amount) {
+        List<CostAllocation> rows = personnelRows(employeeId, year);
+        CostAllocation annual = rows.stream().filter(row -> row.getPlanMonth() == null).findFirst().orElse(null);
+        CostAllocation monthRow = rows.stream()
+                .filter(row -> Integer.valueOf(month).equals(row.getPlanMonth()))
+                .findFirst().orElse(null);
+        if (monthRow == null) {
+            if (annual == null) {
+                throw new IllegalArgumentException("Brak pensji pracownika w planie na rok " + year);
+            }
+            monthRow = copyPlanLine(annual, month, amount);
+        } else {
+            monthRow.setAmount(amount);
+            costAllocationRepository.save(monthRow);
+        }
+        BigDecimal sum = BigDecimal.ZERO;
+        for (CostAllocation row : personnelRows(employeeId, year)) {
+            if (row.getPlanMonth() != null && row.getAmount() != null) {
+                sum = sum.add(row.getAmount());
+            }
+        }
+        if (annual != null) {
+            annual.setAmount(sum.setScale(2, RoundingMode.HALF_UP));
+            costAllocationRepository.save(annual);
+        }
+        refreshEmployeePlannedCost(employeeId, year);
+    }
+
+    /** Roczna linia pozycji (planMonth = null) dostaje sumę jej linii miesięcznych. */
+    private void recomputeAnnualFromMonths(CostAllocation monthRow) {
+        CostAllocation annual = null;
+        BigDecimal sum = BigDecimal.ZERO;
+        for (CostAllocation row : costAllocationRepository.findAllPlanAllocationsByFiscalYear(monthRow.getFiscalYear())) {
+            if (!sameLine(monthRow, row)) {
+                continue;
+            }
+            if (row.getPlanMonth() == null) {
+                annual = row;
+            } else if (row.getAmount() != null) {
+                sum = sum.add(row.getAmount());
+            }
+        }
+        if (annual != null) {
+            annual.setAmount(sum.setScale(2, RoundingMode.HALF_UP));
+            costAllocationRepository.save(annual);
+        }
     }
 
     private CostAllocation copyPlanLine(CostAllocation source, Integer planMonth, BigDecimal amount) {

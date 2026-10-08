@@ -22,6 +22,8 @@ public class GrantBudgetSaveCommand {
     @Setter
     public static class ItemCommand {
         private Long budgetItemId;
+        /** Indeks pozycji nadrzędnej na liście items (musi być mniejszy niż indeks tej pozycji). */
+        private Integer parentIndex;
         private String name;
         private String code;
         private BigDecimal plannedAmount;

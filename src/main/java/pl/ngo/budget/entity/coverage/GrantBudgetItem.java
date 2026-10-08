@@ -1,6 +1,8 @@
 package pl.ngo.budget.entity.coverage;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -38,6 +40,12 @@ public class GrantBudgetItem {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    /** Pozycja nadrzędna; null dla pozycji głównej. Podpozycje mają kod kategorii rodzica. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    @OnDelete(action = OnDeleteAction.SET_NULL)
+    private GrantBudgetItem parent;
 
     @OneToMany(mappedBy = "grantBudgetItem", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<GrantBudgetItemCoverage> coverages = new ArrayList<>();

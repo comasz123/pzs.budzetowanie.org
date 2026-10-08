@@ -9,6 +9,7 @@ import pl.ngo.budget.dto.GrantBudgetChoiceDto;
 import pl.ngo.budget.dto.GrantBudgetChoiceGroupDto;
 import pl.ngo.budget.dto.GrantBudgetSaveCommand;
 import pl.ngo.budget.dto.GrantSaveCommand;
+import pl.ngo.budget.entity.cost.ContractType;
 import pl.ngo.budget.entity.cost.Employee;
 import pl.ngo.budget.entity.coverage.BudgetItemTemplate;
 import pl.ngo.budget.entity.coverage.Grant;
@@ -31,6 +32,7 @@ import pl.ngo.budget.util.ExcelDownload;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -352,11 +354,35 @@ public class AdminController {
     @GetMapping("/employees")
     public String employees(Model model) {
         model.addAttribute("activeSection", "employees");
-        model.addAttribute("employees", employeeRepository.findAll().stream()
+        List<Employee> sorted = employeeRepository.findAll().stream()
                 .sorted(Comparator.comparing(Employee::getLastName, String.CASE_INSENSITIVE_ORDER)
                         .thenComparing(Employee::getFirstName, String.CASE_INSENSITIVE_ORDER))
-                        .toList());
+                .toList();
+        model.addAttribute("employees", sorted);
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (ContractType type : ContractType.values()) {
+            groups.add(employeeGroup(type.getLabel(), sorted.stream().filter(e -> e.getContractType() == type).toList()));
+        }
+        List<Employee> unassigned = sorted.stream().filter(e -> e.getContractType() == null).toList();
+        if (!unassigned.isEmpty()) {
+            groups.add(employeeGroup("Bez rodzaju umowy", unassigned));
+        }
+        model.addAttribute("employeeGroups", groups);
+        model.addAttribute("employeesTotal", sorted.stream()
+                .map(e -> e.getPlannedCost() != null ? e.getPlannedCost() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        model.addAttribute("contractTypes", ContractType.values());
         return "admin/employees";
+    }
+
+    private static Map<String, Object> employeeGroup(String label, List<Employee> members) {
+        Map<String, Object> group = new java.util.LinkedHashMap<>();
+        group.put("label", label);
+        group.put("employees", members);
+        group.put("subtotal", members.stream()
+                .map(e -> e.getPlannedCost() != null ? e.getPlannedCost() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        return group;
     }
 
     @GetMapping("/employees/export")
@@ -369,6 +395,7 @@ public class AdminController {
     public String newEmployee(Model model) {
         model.addAttribute("activeSection", "employees");
         model.addAttribute("employee", new Employee());
+        model.addAttribute("contractTypes", ContractType.values());
         model.addAttribute("pageTitle", "Nowy pracownik");
         return "admin/employee-form";
     }
@@ -379,6 +406,7 @@ public class AdminController {
                 .orElseThrow(() -> new IllegalArgumentException("Pracownik nie istnieje"));
         model.addAttribute("activeSection", "employees");
         model.addAttribute("employee", employee);
+        model.addAttribute("contractTypes", ContractType.values());
         model.addAttribute("pageTitle", "Edycja pracownika");
         return "admin/employee-form";
     }
@@ -391,6 +419,7 @@ public class AdminController {
                                  @RequestParam(required = false) String phone,
                                  @RequestParam(required = false) String position,
                                  @RequestParam(required = false) BigDecimal plannedCost,
+                                 @RequestParam(required = false) String contractType,
                                  RedirectAttributes redirectAttributes) {
         try {
             Employee employee = id != null
@@ -401,9 +430,16 @@ public class AdminController {
             employee.setEmail(blankToNull(email));
             employee.setPhone(blankToNull(phone));
             employee.setPosition(blankToNull(position));
+            employee.setContractType(contractType == null || contractType.isBlank()
+                    ? null : ContractType.valueOf(contractType));
+            boolean costChanged = employee.getPlannedCost() == null
+                    ? plannedCost != null
+                    : plannedCost == null || employee.getPlannedCost().compareTo(plannedCost) != 0;
             employee.setPlannedCost(plannedCost);
             employeeRepository.save(employee);
-            budgetSetupService.syncEmployeeSalaryAllocations(employee.getId(), employee.getPlannedCost());
+            if (costChanged) {
+                budgetSetupService.syncEmployeeSalaryAllocations(employee.getId(), employee.getPlannedCost());
+            }
             redirectAttributes.addFlashAttribute("successMessage", "Zapisano pracownika: " + employee.getFirstName() + " " + employee.getLastName());
         } catch (Exception ex) {
             redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
@@ -600,6 +636,7 @@ public class AdminController {
         if (grant.getBudgetItems() != null) {
             grant.getBudgetItems().stream()
                     .filter(GrantBudgetItem::isActive)
+                    .filter(item -> item.getParent() == null)
                     .sorted(java.util.Comparator.comparing(GrantBudgetItem::getName, String.CASE_INSENSITIVE_ORDER))
                     .forEach(item -> {
                         GrantSaveCommand.BudgetItemCommand row = new GrantSaveCommand.BudgetItemCommand();

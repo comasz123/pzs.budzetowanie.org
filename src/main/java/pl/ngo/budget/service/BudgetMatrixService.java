@@ -788,6 +788,9 @@ public class BudgetMatrixService {
 
         for (Grant grant : grants) {
             for (GrantBudgetItem item : grant.getBudgetItems()) {
+                if (isGrantOnlyItem(item)) {
+                    continue;
+                }
                 String key = itemKey(item);
                 itemOrder.add(key);
                 BigDecimal planned = scaleAmount(item.getPlannedAmount(), amountScale);
@@ -821,7 +824,7 @@ public class BudgetMatrixService {
             }
             GrantBudgetItem item = expenditure.getBudgetItem();
             Grant grant = expenditure.getGrant();
-            if (item == null || grant == null) {
+            if (item == null || grant == null || isGrantOnlyItem(item)) {
                 continue;
             }
             String key = itemKey(item);
@@ -868,6 +871,10 @@ public class BudgetMatrixService {
 
         for (String key : itemOrder) {
             if (isKeyHandledByCategory(key, handledCategoryRowKeys)) {
+                continue;
+            }
+            // Kategorie z budżetów grantów to nie koszty organizacji: pokazujemy je tylko, gdy są na nich wydatki.
+            if (!spentByItemAndGrant.containsKey(key)) {
                 continue;
             }
             BudgetItemRowDto row = buildRow(key, grantNames, plannedByItem, plannedByItemAndGrant);
@@ -950,7 +957,12 @@ public class BudgetMatrixService {
                             flat.add(grandChildDisplay);
                         }
                     }
-                    appendAllocationDisplayRows(flat, child.getAllocations(), 2, categoryRootRowKey);
+                    // Pensja rozbita na różne kategorie kosztów (podwiersze pod pracownikiem) pokazuje też pełny
+                    // wiersz „Wynagrodzenia”; nierozbita to jedna liczba w wierszu pracownika.
+                    boolean unsplitSalary = isEmployeeRow(child)
+                            && (grandChildren == null || grandChildren.isEmpty());
+                    appendAllocationDisplayRows(flat, unsplitSalary ? List.of() : child.getAllocations(),
+                            2, categoryRootRowKey);
                 }
             } else {
                 appendAllocationDisplayRows(flat, row.getAllocations(), 1, categoryRootRowKey);
@@ -1019,6 +1031,10 @@ public class BudgetMatrixService {
         display.setAmountEditable(true);
         display.setAmountEditKind("subcategory");
         display.setAmountEditIds(parentRowKey + "|" + row.getRowKey());
+    }
+
+    private static boolean isEmployeeRow(BudgetItemRowDto row) {
+        return row.getRowKey() != null && row.getRowKey().matches("employee-\\d+");
     }
 
     private BudgetDashboardDto.BudgetDisplayRowDto toDisplayRow(BudgetItemRowDto row, int depth) {
@@ -1126,12 +1142,18 @@ public class BudgetMatrixService {
                 continue;
             }
 
-            BigDecimal planned = month != null
-                    ? MonthlySplit.shareForMonth(employee.getPlannedCost(), month)
-                    : scaleAmount(employee.getPlannedCost(), amountScale);
-
             List<CostAllocation> employeeAllocations =
                     allocationsByEmployee.getOrDefault(employee.getId(), List.of());
+            BigDecimal planned;
+            BigDecimal storedMonth = month != null ? storedSalaryForMonth(employeeAllocations, month) : null;
+            if (storedMonth != null) {
+                planned = scaleAmount(storedMonth, amountScale);
+            } else if (month != null) {
+                planned = MonthlySplit.shareForMonth(employee.getPlannedCost(), month);
+            } else {
+                planned = scaleAmount(employee.getPlannedCost(), amountScale);
+            }
+
             List<CostAllocation> visibleAllocations = new ArrayList<>();
             for (CostAllocation allocation : employeeAllocations) {
                 if (!GrantBudgetService.isSalaryCoveragePlan(allocation)) {
@@ -1183,11 +1205,16 @@ public class BudgetMatrixService {
                     if (salaryDestinationCode(item) != null && employeeIdOf(coverage) != null) {
                         continue;
                     }
-                    BigDecimal covered = GrantCoverageYear.amount(grant, coverage, fiscalYear);
-                    if (covered == null || covered.signum() <= 0) {
-                        continue;
+                    BigDecimal amount;
+                    if (coverage.hasMonthlyAmounts()) {
+                        amount = coverage.monthlyAmount(fiscalYear, month);
+                    } else {
+                        BigDecimal covered = GrantCoverageYear.amount(grant, coverage, fiscalYear);
+                        if (covered == null || covered.signum() <= 0) {
+                            continue;
+                        }
+                        amount = coverageAmountForPeriod(grant, covered, fiscalYear, month);
                     }
-                    BigDecimal amount = coverageAmountForPeriod(grant, covered, fiscalYear, month);
                     if (amount == null || amount.signum() <= 0) {
                         continue;
                     }
@@ -1316,6 +1343,7 @@ public class BudgetMatrixService {
     }
 
     private void splitAdminSalaryFromPersonnel(BudgetItemRowDto personnel,
+                                                int fiscalYear,
                                                 Map<Long, Map<String, AdminSalaryMove>> moves,
                                                 List<String> grantNames,
                                                 Integer month) {
@@ -1328,7 +1356,7 @@ public class BudgetMatrixService {
             if (employeeId == null) {
                 continue;
             }
-            BigDecimal full = salaryForPeriod(employeeId, month);
+            BigDecimal full = salaryForPeriod(employeeId, fiscalYear, month);
             if (full == null) {
                 continue;
             }
@@ -1401,6 +1429,35 @@ public class BudgetMatrixService {
     }
 
     /** Pensja na rok albo udział jednego miesiąca. Nie schodzi z kwoty już pomniejszonej o pokrycie. */
+    /** Pensja zapisana w planie miesięcznym tego miesiąca; null, gdy plan roku nie jest miesięczny. */
+    private static BigDecimal storedSalaryForMonth(List<CostAllocation> employeeAllocations, int month) {
+        BigDecimal sum = null;
+        for (CostAllocation allocation : employeeAllocations) {
+            if (allocation.getCategory() == null || !PERSONNEL_CODE.equals(allocation.getCategory().getCode())
+                    || GrantBudgetService.isSalaryCoveragePlan(allocation)
+                    || !Integer.valueOf(month).equals(allocation.getPlanMonth())) {
+                continue;
+            }
+            BigDecimal amount = allocation.getAmount() != null ? allocation.getAmount() : BigDecimal.ZERO;
+            sum = sum == null ? amount : sum.add(amount);
+        }
+        return sum;
+    }
+
+    private BigDecimal salaryForPeriod(Long employeeId, Integer fiscalYear, Integer month) {
+        if (month != null && fiscalYear != null) {
+            List<CostAllocation> monthRows = costAllocationRepository
+                    .findPlanAllocationsByFiscalYearAndPlanMonth(fiscalYear, month).stream()
+                    .filter(a -> a.getEmployee() != null && employeeId.equals(a.getEmployee().getId()))
+                    .toList();
+            BigDecimal stored = storedSalaryForMonth(monthRows, month);
+            if (stored != null) {
+                return stored.setScale(2, RoundingMode.HALF_UP);
+            }
+        }
+        return salaryForPeriod(employeeId, month);
+    }
+
     private BigDecimal salaryForPeriod(Long employeeId, Integer month) {
         Employee employee = employeeRepository.findById(employeeId).orElse(null);
         if (employee == null) {
@@ -2253,7 +2310,7 @@ public class BudgetMatrixService {
         Map<Long, Map<String, AdminSalaryMove>> salaryMoves = salaryRelocations(grants, fiscalYear, month);
         applyPlanCoverage(row, planCoverageBySource(grants, fiscalYear, month), grantNames);
         if (PERSONNEL_CODE.equals(categoryCode)) {
-            splitAdminSalaryFromPersonnel(row, salaryMoves, grantNames, month);
+            splitAdminSalaryFromPersonnel(row, fiscalYear, salaryMoves, grantNames, month);
         }
         if (ADMIN_CODE.equals(categoryCode)) {
             addSalaryPositions(row, salaryMoves, ADMIN_CODE, ADMIN_WYNAGRODZENIA_KEY,
@@ -2513,6 +2570,12 @@ public class BudgetMatrixService {
                 || PERSONNEL_LEGACY_NAME.equals(item.getName())
                 || PERSONNEL_LABEL.equals(item.getName())
                 || (item.getName() != null && item.getName().contains("Wynagrodzenia"));
+    }
+
+    /** Podpozycje grantu i kategorie spoza budżetu organizacji (kod GRANT_…) nie tworzą wierszy budżetu organizacji. */
+    private static boolean isGrantOnlyItem(GrantBudgetItem item) {
+        return item.getParent() != null
+                || (item.getCode() != null && item.getCode().startsWith("GRANT_"));
     }
 
     private static String itemKey(GrantBudgetItem item) {

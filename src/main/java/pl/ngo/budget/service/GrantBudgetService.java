@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class GrantBudgetService {
@@ -117,12 +118,24 @@ public class GrantBudgetService {
             dto.getCategoryOptions().add(category);
         }
 
-        grant.getBudgetItems().stream()
-                .filter(GrantBudgetItem::isActive)
-                .sorted(Comparator.comparing(GrantBudgetItem::getCode, Comparator.nullsLast(String::compareTo))
-                        .thenComparing(GrantBudgetItem::getName))
-                .map(item -> toLineDto(item, spentByBudgetItemId, GrantCoverageYear.splits(grant)))
-                .forEach(line -> dto.getLines().add(line));
+        boolean splitCoverage = GrantCoverageYear.splits(grant);
+        List<GrantBudgetItem> active = grant.getBudgetItems().stream().filter(GrantBudgetItem::isActive).toList();
+        Map<Long, List<GrantBudgetItem>> childrenByParent = new HashMap<>();
+        List<GrantBudgetItem> roots = new ArrayList<>();
+        for (GrantBudgetItem item : active) {
+            GrantBudgetItem parent = item.getParent();
+            if (parent != null && parent.getId() != null && active.stream().anyMatch(i -> parent.getId().equals(i.getId()))) {
+                childrenByParent.computeIfAbsent(parent.getId(), k -> new ArrayList<>()).add(item);
+            } else {
+                roots.add(item);
+            }
+        }
+        roots.sort(Comparator.comparing(GrantBudgetItem::getCode, Comparator.nullsLast(String::compareTo))
+                .thenComparing(GrantBudgetItem::getName));
+        for (GrantBudgetItem root : roots) {
+            addLineTree(dto, root, 0, childrenByParent, spentByBudgetItemId, splitCoverage);
+        }
+        aggregateParentLines(dto, splitCoverage);
 
         if (grant.getTranches() != null) {
             grant.getTranches().stream()
@@ -132,6 +145,7 @@ public class GrantBudgetService {
         }
 
         BigDecimal planned = dto.getLines().stream()
+                .filter(line -> line.getDepth() == 0)
                 .map(line -> line.getPlannedAmount() != null ? line.getPlannedAmount() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal total = dto.getTotalAmount() != null ? dto.getTotalAmount() : BigDecimal.ZERO;
@@ -178,7 +192,9 @@ public class GrantBudgetService {
         }
 
         java.util.Set<Long> submittedIds = new java.util.HashSet<>();
-        for (GrantBudgetSaveCommand.ItemCommand itemCommand : command.getItems()) {
+        List<GrantBudgetItem> resolved = new ArrayList<>(java.util.Collections.nCopies(command.getItems().size(), null));
+        for (int index = 0; index < command.getItems().size(); index++) {
+            GrantBudgetSaveCommand.ItemCommand itemCommand = command.getItems().get(index);
             GrantBudgetItem item;
             if (itemCommand.getBudgetItemId() != null) {
                 item = itemsById.get(itemCommand.getBudgetItemId());
@@ -203,10 +219,25 @@ public class GrantBudgetService {
                 item.setCode(itemCommand.getCode().trim());
                 item.setAccountingCode(item.getCode());
             }
+            Integer parentIndex = itemCommand.getParentIndex();
+            GrantBudgetItem parent = parentIndex != null && parentIndex >= 0 && parentIndex < index
+                    ? resolved.get(parentIndex) : null;
+            item.setParent(parent);
+            if (parent != null) {
+                // Podpozycja należy do kategorii rodzica.
+                item.setCode(parent.getCode());
+                item.setAccountingCode(parent.getAccountingCode());
+            } else if (item.getCode() == null || item.getCode().isBlank()) {
+                // Kategoria spoza budżetu organizacji: kod wynika z nazwy.
+                item.setCode(uniqueCustomCode(grant, item));
+                item.setAccountingCode(item.getCode());
+            }
+            resolved.set(index, item);
             item.setPlannedAmount(itemCommand.getPlannedAmount() != null
                     ? itemCommand.getPlannedAmount()
                     : BigDecimal.ZERO);
             item.setActive(true);
+            List<GrantBudgetItemCoverage> previousCoverages = new ArrayList<>(item.getCoverages());
             item.getCoverages().clear();
             if (itemCommand.getCoverages() != null) {
                 for (GrantBudgetSaveCommand.CoverageCommand coverageCommand : itemCommand.getCoverages()) {
@@ -239,6 +270,7 @@ public class GrantBudgetService {
                     } else {
                         coverage.setCoveredAmount2027(null);
                     }
+                    keepMonthlyAmounts(previousCoverages, coverage);
                     item.getCoverages().add(coverage);
                 }
             }
@@ -248,11 +280,164 @@ public class GrantBudgetService {
                 item.setActive(false);
             }
         }
+        recomputeParentTotals(grant);
 
         grant.getTranches().size();
         budgetSetupService.replaceGrantTranches(grant, toTrancheCommands(command.getTranches()));
         grantRepository.save(grant);
         syncEmployeeCoverageMonths(grant);
+    }
+
+    private void addLineTree(GrantBudgetViewDto dto,
+                             GrantBudgetItem item,
+                             int depth,
+                             Map<Long, List<GrantBudgetItem>> childrenByParent,
+                             Map<Long, BigDecimal> spentByBudgetItemId,
+                             boolean coverageSplitByYear) {
+        GrantBudgetLineDto line = toLineDto(item, spentByBudgetItemId, coverageSplitByYear);
+        line.setDepth(depth);
+        line.setParentId(item.getParent() != null ? item.getParent().getId() : null);
+        List<GrantBudgetItem> children = childrenByParent.getOrDefault(item.getId(), List.of());
+        line.setHasChildren(!children.isEmpty());
+        dto.getLines().add(line);
+        children.stream()
+                .sorted(Comparator.comparing(GrantBudgetItem::getName, String.CASE_INSENSITIVE_ORDER))
+                .forEach(child -> addLineTree(dto, child, depth + 1, childrenByParent,
+                        spentByBudgetItemId, coverageSplitByYear));
+    }
+
+    /**
+     * Pozycja z podpozycjami jest sumą: plan i wydatki to suma podpozycji, a pokrycie to jej własne pokrycie
+     * plus pokrycie podpozycji. Dzięki temu „Zostało” nadrzędnej pozycji zgadza się z podpozycjami.
+     */
+    private static void aggregateParentLines(GrantBudgetViewDto dto, boolean coverageSplitByYear) {
+        List<GrantBudgetLineDto> lines = dto.getLines();
+        Map<Long, BigDecimal> planned = new HashMap<>();
+        Map<Long, BigDecimal> spent = new HashMap<>();
+        Map<Long, BigDecimal> covered = new HashMap<>();
+        for (GrantBudgetLineDto line : lines) {
+            Long id = line.getBudgetItemId();
+            planned.put(id, line.isHasChildren() ? BigDecimal.ZERO : nz(line.getPlannedAmount()));
+            spent.put(id, nz(line.getActualSpent()));
+            BigDecimal own = BigDecimal.ZERO;
+            for (CoveredOrgBudgetLineDto cov : line.getCoveredOrgLines()) {
+                own = own.add(nz(cov.getAmount()));
+                if (coverageSplitByYear) {
+                    own = own.add(nz(cov.getAmount2027()));
+                }
+            }
+            covered.put(id, own);
+        }
+        // Linie są w kolejności drzewa (rodzic przed dziećmi), więc od końca potomkowie trafiają do rodzica.
+        for (int i = lines.size() - 1; i >= 0; i--) {
+            GrantBudgetLineDto line = lines.get(i);
+            Long parentId = line.getParentId();
+            if (parentId != null && planned.containsKey(parentId)) {
+                Long id = line.getBudgetItemId();
+                planned.merge(parentId, planned.get(id), BigDecimal::add);
+                spent.merge(parentId, spent.get(id), BigDecimal::add);
+                covered.merge(parentId, covered.get(id), BigDecimal::add);
+            }
+        }
+        for (GrantBudgetLineDto line : lines) {
+            if (!line.isHasChildren()) {
+                continue;
+            }
+            Long id = line.getBudgetItemId();
+            BigDecimal linePlanned = planned.get(id);
+            line.setPlannedAmount(linePlanned);
+            line.setActualSpent(spent.get(id));
+            line.setRemaining(linePlanned.subtract(covered.get(id)));
+            line.setUnspent(linePlanned.subtract(spent.get(id)));
+            line.setUnspentPercent(linePlanned.signum() == 0 ? null
+                    : line.getUnspent().multiply(BigDecimal.valueOf(100))
+                    .divide(linePlanned, 1, RoundingMode.HALF_UP));
+        }
+    }
+
+    private static BigDecimal nz(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    /** Pozycja z podpozycjami ma plan równy sumie planów swoich aktywnych podpozycji (od najgłębszych). */
+    private static void recomputeParentTotals(Grant grant) {
+        List<GrantBudgetItem> active = grant.getBudgetItems().stream().filter(GrantBudgetItem::isActive).toList();
+        Map<GrantBudgetItem, List<GrantBudgetItem>> children = new java.util.IdentityHashMap<>();
+        for (GrantBudgetItem item : active) {
+            if (item.getParent() != null) {
+                children.computeIfAbsent(item.getParent(), k -> new ArrayList<>()).add(item);
+            }
+        }
+        List<GrantBudgetItem> parents = new ArrayList<>(children.keySet());
+        parents.sort(Comparator.comparingInt((GrantBudgetItem item) -> depthOf(item)).reversed());
+        for (GrantBudgetItem parent : parents) {
+            BigDecimal sum = BigDecimal.ZERO;
+            for (GrantBudgetItem child : children.get(parent)) {
+                sum = sum.add(child.getPlannedAmount() != null ? child.getPlannedAmount() : BigDecimal.ZERO);
+            }
+            parent.setPlannedAmount(sum);
+        }
+    }
+
+    private static int depthOf(GrantBudgetItem item) {
+        int depth = 0;
+        for (GrantBudgetItem p = item.getParent(); p != null && depth < 20; p = p.getParent()) {
+            depth++;
+        }
+        return depth;
+    }
+
+    private static String uniqueCustomCode(Grant grant, GrantBudgetItem self) {
+        String base = java.text.Normalizer.normalize(self.getName() == null ? "" : self.getName(), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toUpperCase(java.util.Locale.ROOT)
+                .replace('Ł', 'L')
+                .replaceAll("[^A-Z0-9]+", "_")
+                .replaceAll("^_|_$", "");
+        if (base.isBlank()) {
+            base = "POZYCJA";
+        }
+        if (base.length() > 30) {
+            base = base.substring(0, 30);
+        }
+        String prefix = "GRANT_" + base;
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (GrantBudgetItem item : grant.getBudgetItems()) {
+            if (item != self && item.getCode() != null) {
+                used.add(item.getCode());
+            }
+        }
+        String code = prefix;
+        for (int i = 2; used.contains(code); i++) {
+            code = prefix + "_" + i;
+        }
+        return code;
+    }
+
+    /**
+     * Rzeczywiste miesięczne kwoty pokrycia (z importu) przeżywają zapis strony budżetu grantu, o ile
+     * roczne kwoty tego pokrycia się nie zmieniły. Zmiana kwoty wraca do równego podziału.
+     */
+    private static void keepMonthlyAmounts(List<GrantBudgetItemCoverage> previous, GrantBudgetItemCoverage fresh) {
+        for (GrantBudgetItemCoverage old : previous) {
+            if (!old.hasMonthlyAmounts()
+                    || old.getOrgSourceType() != fresh.getOrgSourceType()
+                    || !Objects.equals(old.getOrgSourceId(), fresh.getOrgSourceId())
+                    || !Objects.equals(old.getOrgSourceKey(), fresh.getOrgSourceKey())) {
+                continue;
+            }
+            if (sameAmount(old.getCoveredAmount(), fresh.getCoveredAmount())
+                    && sameAmount(old.getCoveredAmount2027(), fresh.getCoveredAmount2027())) {
+                fresh.getMonthlyAmounts().putAll(old.getMonthlyAmounts());
+            }
+            return;
+        }
+    }
+
+    private static boolean sameAmount(BigDecimal a, BigDecimal b) {
+        BigDecimal x = a != null ? a : BigDecimal.ZERO;
+        BigDecimal y = b != null ? b : BigDecimal.ZERO;
+        return x.compareTo(y) == 0;
     }
 
     private GrantBudgetViewDto.TrancheDto toTrancheDto(GrantTranche tranche) {
@@ -324,6 +509,7 @@ public class GrantBudgetService {
         }
         boolean split = GrantCoverageYear.splits(grant);
         Map<Long, Map<Integer, BigDecimal>> byEmployeeYear = new LinkedHashMap<>();
+        Map<Long, Map<YearMonth, BigDecimal>> explicitByEmployee = new LinkedHashMap<>();
         for (GrantBudgetItem item : grant.getBudgetItems()) {
             if (!item.isActive() || !CODE_PER.equals(item.getCode()) || item.getCoverages() == null) {
                 continue;
@@ -334,6 +520,15 @@ public class GrantBudgetService {
                         || coverage.getOrgSourceId() == 0L) {
                     continue;
                 }
+                if (coverage.hasMonthlyAmounts()) {
+                    for (Map.Entry<Integer, BigDecimal> e : coverage.getMonthlyAmounts().entrySet()) {
+                        if (e.getValue() != null && e.getValue().signum() > 0) {
+                            explicitByEmployee.computeIfAbsent(coverage.getOrgSourceId(), ignored -> new LinkedHashMap<>())
+                                    .merge(YearMonth.of(e.getKey() / 100, e.getKey() % 100), e.getValue(), BigDecimal::add);
+                        }
+                    }
+                    continue;
+                }
                 if (split) {
                     addEmployeeYearAmount(byEmployeeYear, coverage.getOrgSourceId(), 2026, coverage.getCoveredAmount());
                     addEmployeeYearAmount(byEmployeeYear, coverage.getOrgSourceId(), 2027, coverage.getCoveredAmount2027());
@@ -342,6 +537,26 @@ public class GrantBudgetService {
                         addEmployeeYearAmount(byEmployeeYear, coverage.getOrgSourceId(), year, coverage.getCoveredAmount());
                     }
                 }
+            }
+        }
+        for (Map.Entry<Long, Map<YearMonth, BigDecimal>> entry : explicitByEmployee.entrySet()) {
+            Employee employee = employeeRepository.findById(entry.getKey()).orElse(null);
+            if (employee == null) {
+                continue;
+            }
+            for (Map.Entry<YearMonth, BigDecimal> month : entry.getValue().entrySet()) {
+                CostAllocation allocation = new CostAllocation();
+                allocation.setEmployee(employee);
+                allocation.setProject(grant.getProject());
+                allocation.setCategory(personnel);
+                allocation.setAmount(month.getValue());
+                allocation.setPercentage(new BigDecimal("100.00"));
+                allocation.setFiscalYear(month.getKey().getYear());
+                allocation.setPlanMonth(month.getKey().getMonthValue());
+                allocation.setLabel(label);
+                allocation.setActive(true);
+                allocation.setSplitToMonths(false);
+                costAllocationRepository.save(allocation);
             }
         }
         for (Map.Entry<Long, Map<Integer, BigDecimal>> entry : byEmployeeYear.entrySet()) {

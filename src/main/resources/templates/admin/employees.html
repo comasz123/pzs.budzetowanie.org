@@ -31,8 +31,12 @@
                     <th class="text-end" th:if="${canEdit}">Akcje</th>
                 </tr>
                 </thead>
+                <th:block th:each="group : ${employeeGroups}">
                 <tbody>
-                <tr th:each="employee : ${employees}">
+                <tr class="table-secondary">
+                    <th colspan="6" th:text="${group.label}">Rodzaj umowy</th>
+                </tr>
+                <tr th:each="employee : ${group.employees}">
                     <td th:text="${employee.firstName + ' ' + employee.lastName}">Jan Kowalski</td>
                     <td th:text="${employee.position != null ? employee.position : '-'}">Stanowisko</td>
                     <td th:text="${employee.email != null ? employee.email : '-'}">E-mail</td>
@@ -47,10 +51,23 @@
                         </form>
                     </td>
                 </tr>
-                <tr th:if="${#lists.isEmpty(employees)}">
-                    <td colspan="6" class="text-muted text-center py-4">Brak pracowników.</td>
+                <tr th:if="${#lists.isEmpty(group.employees)}">
+                    <td colspan="6" class="text-muted small ps-4">Brak pracowników.</td>
+                </tr>
+                <tr class="fw-semibold">
+                    <td colspan="4" class="text-end" th:text="'Razem — ' + ${group.label}">Razem</td>
+                    <td class="text-end" th:text="${#numbers.formatDecimal(group.subtotal, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                    <td th:if="${canEdit}"></td>
                 </tr>
                 </tbody>
+                </th:block>
+                <tfoot>
+                <tr class="table-dark fw-bold">
+                    <td colspan="4" class="text-end">Razem wynagrodzenia</td>
+                    <td class="text-end" th:text="${#numbers.formatDecimal(employeesTotal, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                    <td th:if="${canEdit}"></td>
+                </tr>
+                </tfoot>
             </table>
         </div>
     </div>

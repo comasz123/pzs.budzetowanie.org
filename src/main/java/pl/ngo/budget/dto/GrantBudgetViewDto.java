@@ -52,6 +52,11 @@ public class GrantBudgetViewDto {
     @Setter
     public static class GrantBudgetLineDto {
         private Long budgetItemId;
+        /** Poziom zagnieżdżenia: 0 = pozycja główna. */
+        private int depth;
+        private Long parentId;
+        /** Pozycja ma podpozycje: kwoty są sumą podpozycji. */
+        private boolean hasChildren;
         private String name;
         private String code;
         private BigDecimal plannedAmount;

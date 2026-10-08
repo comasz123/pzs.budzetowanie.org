@@ -164,7 +164,7 @@
             <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div>
                     <h2 class="h5 m-0">Pozycje budżetu grantu</h2>
-                    <p class="text-muted small mb-0 mt-1">Grant finansuje wskazane pozycje budżetu organizacji.</p>
+                    <p class="text-muted small mb-0 mt-1">Grant finansuje wskazane pozycje budżetu organizacji. Przyciskiem ＋ dodasz podpozycję; pozycja z podpozycjami jest ich sumą.</p>
                 </div>
                 <button th:if="${editMode}" type="submit" class="btn btn-primary btn-sm">Zapisz budżet</button>
                 <a th:if="${canEdit and !editMode}" class="btn btn-primary btn-sm"
@@ -189,8 +189,9 @@
                     <tbody id="grantBudgetBody">
                     <th:block th:each="line, lineStat : ${grantBudget.lines}">
                         <tr class="grant-line-row" th:each="cov, covStat : ${line.coveredOrgLines}"
-                            th:attr="data-line-index=${lineStat.index}, data-category-code=${line.code}">
-                            <td th:if="${covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}">
+                            th:attr="data-line-index=${lineStat.index}, data-category-code=${line.code}, data-depth=${line.depth}">
+                            <td th:if="${covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}"
+                                th:style="${line.depth > 0 ? 'padding-left:' + (0.5 + line.depth * 1.75) + 'rem' : null}">
                                 <th:block th:if="${editMode}">
                                     <input type="hidden" class="line-id"
                                            th:name="|items[${lineStat.index}].budgetItemId|"
@@ -198,11 +199,14 @@
                                     <input type="hidden" class="line-code"
                                            th:name="|items[${lineStat.index}].code|"
                                            th:value="${line.code}"/>
-                                    <input class="form-control form-control-sm fw-semibold line-name"
-                                           th:name="|items[${lineStat.index}].name|"
-                                           th:value="${line.name}" required/>
+                                    <input type="hidden" class="line-parent" disabled/>
+                                    <textarea class="form-control form-control-sm line-name" rows="2"
+                                              th:classappend="${line.depth == 0} ? 'fw-semibold' : ''"
+                                              th:name="|items[${lineStat.index}].name|"
+                                              th:text="${line.name}" required></textarea>
                                 </th:block>
-                                <span th:unless="${editMode}" class="fw-semibold" th:text="${line.name}">Pozycja</span>
+                                <span th:unless="${editMode}" th:classappend="${line.depth == 0} ? 'fw-semibold' : ''"
+                                      th:text="${(line.depth > 0 ? '↳ ' : '') + line.name}">Pozycja</span>
                             </td>
                             <td th:if="${covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}" class="text-end">
                                 <input th:if="${editMode}" class="form-control form-control-sm ms-auto line-planned money-input"
@@ -250,8 +254,9 @@
                                 class="text-end line-left"
                                 th:classappend="${line.remaining != null and line.remaining.signum() < 0} ? 'text-negative' : ''"
                                 th:text="${#numbers.formatDecimal(line.remaining, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
-                            <td th:if="${editMode and covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}" class="text-end">
-                                <button type="button" class="btn btn-outline-danger btn-sm remove-grant-line" title="Usuń">×</button>
+                            <td th:if="${editMode and covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}" class="text-end text-nowrap">
+                                <button type="button" class="btn btn-outline-secondary btn-sm add-child-line" title="Dodaj podpozycję">＋</button>
+                                <button type="button" class="btn btn-outline-danger btn-sm remove-grant-line" title="Usuń pozycję wraz z podpozycjami">×</button>
                             </td>
                         </tr>
                     </th:block>
@@ -292,7 +297,12 @@
                 </table>
             </div>
             <div th:if="${editMode}" class="card-footer bg-white d-flex justify-content-between align-items-center">
-                <button type="button" id="addGrantLineBtn" class="btn btn-outline-primary">Dodaj</button>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" id="addGrantLineBtn" class="btn btn-outline-primary"
+                            title="Pozycja z kategorii budżetu organizacji">Dodaj pozycję</button>
+                    <button type="button" id="addCustomCategoryBtn" class="btn btn-outline-primary"
+                            title="Kategoria, której nie ma w budżecie organizacji">Dodaj kategorię spoza budżetu organizacji</button>
+                </div>
                 <button type="submit" class="btn btn-primary">Zapisz budżet</button>
             </div>
         </div>
@@ -340,8 +350,9 @@
     function coverageOptionsHtml(categoryCode, selectedRef) {
         let html = '<option value="">— wybierz pozycję —</option>';
         let hasPayroll = false;
+        const knownCategory = categories.some((category) => category.code === categoryCode);
         for (const option of orgOptions) {
-            if (categoryCode && option.categoryCode !== categoryCode) {
+            if (categoryCode && knownCategory && option.categoryCode !== categoryCode) {
                 continue;
             }
             if (option.sourceRef === payrollRefFor(categoryCode)) {
@@ -471,19 +482,59 @@
         addEmptyCoverageRow(last, lineCategoryCode(group));
     }
 
-    function addGrantLine() {
+    function lineDepth(row) {
+        return Number(row?.dataset.depth || 0);
+    }
+
+    function lineFirstRows() {
+        return [...body.querySelectorAll('.grant-line-row')].filter((row) => row.querySelector('.line-name'));
+    }
+
+    function lineFirstRow(row) {
+        let first = row;
+        while (first && !first.querySelector('.line-name') && first.previousElementSibling) {
+            first = first.previousElementSibling;
+        }
+        return first;
+    }
+
+    /** Wiersze pozycji wraz z jej wierszami pokrycia i wszystkimi podpozycjami. */
+    function lineSubtree(firstRow) {
+        const depth = lineDepth(firstRow);
+        const rows = [];
+        let current = firstRow;
+        while (current && current.classList.contains('grant-line-row')) {
+            if (current !== firstRow && current.querySelector('.line-name') && lineDepth(current) <= depth) {
+                break;
+            }
+            rows.push(current);
+            current = current.nextElementSibling;
+        }
+        return rows;
+    }
+
+    function createLineRow({ depth, categoryCode, custom }) {
         const row = document.createElement('tr');
         row.className = 'grant-line-row';
+        row.dataset.depth = String(depth);
+        row.dataset.categoryCode = categoryCode || '';
+        const codeControl = depth > 0 || custom
+            ? `<input type="hidden" class="line-code" value="${escapeHtml(categoryCode || '')}"/>`
+            : `<select class="form-select form-select-sm mb-1 line-code">${categoryOptionsHtml('')}</select>`;
+        const badge = custom ? '<div class="small text-muted mb-1">Kategoria spoza budżetu organizacji</div>' : '';
+        const placeholder = custom ? 'Nazwa nowej kategorii' : (depth > 0 ? 'Nazwa podpozycji' : 'Nazwa pozycji grantu');
+        const padding = depth > 0 ? ` style="padding-left:${0.5 + depth * 1.75}rem"` : '';
         row.innerHTML = `
-            <td rowspan="1">
-                <select class="form-select form-select-sm mb-1 line-code">${categoryOptionsHtml('')}</select>
-                <input class="form-control form-control-sm fw-semibold line-name" required placeholder="Nazwa pozycji grantu"/>
+            <td rowspan="1"${padding}>
+                ${codeControl}${badge}
+                <input type="hidden" class="line-parent" disabled/>
+                <textarea class="form-control form-control-sm line-name${depth === 0 ? ' fw-semibold' : ''}" rows="2" required placeholder="${placeholder}"></textarea>
             </td>
             <td rowspan="1" class="text-end">
                 <input class="form-control form-control-sm ms-auto line-planned money-input" type="text" inputmode="decimal" value="0,00"/>
             </td>
             <td>
-                <select class="form-select form-select-sm org-coverage-select">${coverageOptionsHtml('', '')}</select>
+                <select class="form-select form-select-sm org-coverage-select">${coverageOptionsHtml(categoryCode || '', '')}</select>
                 <select class="form-select form-select-sm employee-coverage-select d-none mt-1" disabled>
                     <option value="">— wybierz pracownika —</option>
                 </select>
@@ -493,23 +544,64 @@
             </td>
             ${coverage2027CellHtml()}
             <td rowspan="1" class="text-end line-left">0,00</td>
-            <td rowspan="1" class="text-end">
-                <button type="button" class="btn btn-outline-danger btn-sm remove-grant-line" title="Usuń">×</button>
+            <td rowspan="1" class="text-end text-nowrap">
+                <button type="button" class="btn btn-outline-secondary btn-sm add-child-line" title="Dodaj podpozycję">＋</button>
+                <button type="button" class="btn btn-outline-danger btn-sm remove-grant-line" title="Usuń pozycję wraz z podpozycjami">×</button>
             </td>`;
-        body.appendChild(row);
+        return row;
+    }
+
+    function finishNewLine(row) {
         reindex();
         updateGrantPlanRemaining();
-        updateLineLeft(row);
+        updateAllLineLeft();
         row.querySelector('.line-name')?.focus();
+    }
+
+    function addGrantLine() {
+        const row = createLineRow({ depth: 0, categoryCode: '', custom: false });
+        body.appendChild(row);
+        finishNewLine(row);
+    }
+
+    function addCustomCategory() {
+        const row = createLineRow({ depth: 0, categoryCode: '', custom: true });
+        body.appendChild(row);
+        finishNewLine(row);
+    }
+
+    function addChildLine(parentFirstRow) {
+        const depth = lineDepth(parentFirstRow) + 1;
+        const parentCode = lineCategoryCode(grantLineGroup(parentFirstRow));
+        const row = createLineRow({ depth, categoryCode: parentCode, custom: false });
+        const subtree = lineSubtree(parentFirstRow);
+        subtree[subtree.length - 1].after(row);
+        finishNewLine(row);
     }
 
     function reindex() {
         let lineIndex = -1;
         let coverageIndex = 0;
+        const lastAtDepth = [];
         body.querySelectorAll('.grant-line-row').forEach((row) => {
             if (row.querySelector('.line-name')) {
                 lineIndex += 1;
                 coverageIndex = 0;
+                const depth = lineDepth(row);
+                const parentInput = row.querySelector('.line-parent');
+                const parentLine = depth > 0 ? lastAtDepth[depth - 1] : undefined;
+                if (parentInput) {
+                    if (parentLine !== undefined) {
+                        parentInput.name = `items[${lineIndex}].parentIndex`;
+                        parentInput.value = String(parentLine);
+                        parentInput.disabled = false;
+                    } else {
+                        parentInput.removeAttribute('name');
+                        parentInput.disabled = true;
+                    }
+                }
+                lastAtDepth[depth] = lineIndex;
+                lastAtDepth.length = depth + 1;
                 const idInput = row.querySelector('.line-id');
                 const codeInput = row.querySelector('.line-code');
                 const nameInput = row.querySelector('.line-name');
@@ -569,8 +661,8 @@
     }
 
     function updateLineLeft(row) {
-        const group = grantLineGroup(row);
-        const first = group[0];
+        const first = lineFirstRow(row);
+        const group = lineSubtree(first);
         const cell = first?.querySelector('.line-left');
         if (!cell) {
             return;
@@ -607,12 +699,46 @@
         cell.classList.toggle('text-negative', amount < 0);
     }
 
+    /** Pozycja z podpozycjami ma plan równy sumie ich planów (liczone od najgłębszych). */
+    function recalcParents() {
+        const firsts = lineFirstRows();
+        for (let i = firsts.length - 1; i >= 0; i--) {
+            const depth = lineDepth(firsts[i]);
+            let sum = 0;
+            let hasChild = false;
+            for (let j = i + 1; j < firsts.length; j++) {
+                const childDepth = lineDepth(firsts[j]);
+                if (childDepth <= depth) {
+                    break;
+                }
+                if (childDepth === depth + 1) {
+                    hasChild = true;
+                    sum += parseAmount(firsts[j].querySelector('.line-planned')?.value);
+                }
+            }
+            const input = firsts[i].querySelector('.line-planned');
+            if (!input) {
+                continue;
+            }
+            // disabled, bo readonly jest używane przez money-input.js przeciw podpowiedziom przeglądarki.
+            input.disabled = hasChild;
+            input.classList.toggle('bg-light', hasChild);
+            if (hasChild) {
+                input.value = formatAmount(sum);
+            }
+        }
+    }
+
+    function rootPlannedTotal() {
+        return lineFirstRows()
+            .filter((row) => lineDepth(row) === 0)
+            .reduce((total, row) => total + parseAmount(row.querySelector('.line-planned')?.value), 0);
+    }
+
     function updateGrantPlanRemaining() {
+        recalcParents();
         const total = parseAmount(document.getElementById('totalAmount')?.value);
-        let planned = 0;
-        body.querySelectorAll('.line-planned').forEach((input) => {
-            planned += parseAmount(input.value);
-        });
+        const planned = rootPlannedTotal();
         setFooterAmount('grantPlanSum', planned);
         setFooterAmount('grantPlanRemaining', total - planned);
         updateCoveragePlanTotal();
@@ -632,8 +758,7 @@
     function updateCoveragePlanTotal() {
         const sum = sumCoverage('.coverage-amount');
         const sum2027 = sumCoverage('.coverage-amount-2027');
-        const planned = [...body.querySelectorAll('.line-planned')]
-            .reduce((total, input) => total + parseAmount(input.value), 0);
+        const planned = rootPlannedTotal();
         const grantTotal = parseAmount(document.getElementById('totalAmount')?.value);
         setFooterAmount('coveragePlanTotal', sum);
         setFooterAmount('coveragePlanTotal2027', sum2027);
@@ -675,6 +800,7 @@
     reindex();
 
     document.getElementById('addGrantLineBtn')?.addEventListener('click', addGrantLine);
+    document.getElementById('addCustomCategoryBtn')?.addEventListener('click', addCustomCategory);
 
     body.addEventListener('change', (event) => {
         if (event.target.matches('.org-coverage-select')) {
@@ -709,18 +835,22 @@
     });
 
     body.addEventListener('click', (event) => {
+        const addChild = event.target.closest('.add-child-line');
+        if (addChild) {
+            addChildLine(lineFirstRow(addChild.closest('tr')));
+            return;
+        }
         const button = event.target.closest('.remove-grant-line');
         if (!button) {
             return;
         }
-        const row = button.closest('tr');
-        const rowspan = Number(row.querySelector('td[rowspan]')?.getAttribute('rowspan') || 1);
-        let current = row;
-        for (let i = 0; i < rowspan && current; i++) {
-            const next = current.nextElementSibling;
-            current.remove();
-            current = next;
+        const first = lineFirstRow(button.closest('tr'));
+        const subtree = lineSubtree(first);
+        if (subtree.filter((r) => r.querySelector('.line-name')).length > 1
+                && !confirm('Usunąć pozycję razem z jej podpozycjami?')) {
+            return;
         }
+        subtree.forEach((r) => r.remove());
         reindex();
         updateGrantPlanRemaining();
         updateCoveragePlanTotal();
@@ -804,6 +934,7 @@
         if (event.target.matches('.coverage-amount, .coverage-amount-2027')) {
             updateCoveragePlanTotal();
         }
+        updateAllLineLeft();
     });
     document.getElementById('totalAmount')?.addEventListener('input', () => {
         updateGrantPlanRemaining();

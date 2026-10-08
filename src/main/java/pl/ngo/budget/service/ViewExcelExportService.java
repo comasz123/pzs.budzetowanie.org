@@ -370,7 +370,7 @@ public class ViewExcelExportService {
                                CoveredOrgBudgetLineDto coverage,
                                boolean first) {
         Row row = sheet.createRow(rowIndex);
-        excel.text(row, 0, first ? line.getName() : "");
+        excel.text(row, 0, first ? "    ".repeat(line.getDepth()) + (line.getDepth() > 0 ? "↳ " : "") + line.getName() : "");
         if (first) {
             excel.money(row, 1, line.getPlannedAmount());
         }

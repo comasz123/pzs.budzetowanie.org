@@ -30,6 +30,10 @@ public class Employee {
 
     private String position;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private ContractType contractType;
+
     @Column(precision = 12, scale = 2)
     private BigDecimal plannedCost;
 
