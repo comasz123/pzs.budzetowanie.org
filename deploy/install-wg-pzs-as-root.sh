@@ -37,5 +37,6 @@ echo "--- wg-pzs ---"
 wg show wg-pzs
 echo "--- sluchanie ---"
 ss -lun | grep 51821 || true
-echo "Tunel wlaczony. Panel tylko z 10.10.30.10, 10.10.30.11 i 127.0.0.1."
+echo "Tunel wlaczony. Panel tylko z 10.10.30.10, 10.10.30.11, 10.10.30.12 i 127.0.0.1."
 echo "Konfiguracja Katarzyny: $STAGE/pzs-katarzynad.conf"
+echo "Konfiguracja Joanny: $STAGE/pzs-joannal.conf"

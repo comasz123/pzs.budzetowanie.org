@@ -6,6 +6,11 @@ backups/
 # Lokalne sekrety — wzorzec: application.properties.example
 src/main/resources/application.properties
 
+# Klucze prywatne klientów WireGuard
+deploy/pzs-joannal.conf
+deploy/pzs-katarzynad.conf
+deploy/wg-pzs.conf
+
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

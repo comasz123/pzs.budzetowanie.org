@@ -42,6 +42,7 @@ public class SecurityConfig {
                         "/favicon.ico", "/favicon-16x16.png", "/favicon-32x32.png", "/apple-touch-icon.png").permitAll()
                 .requestMatchers("/admin/users", "/admin/users/**").hasRole("ADMIN")
                 .requestMatchers("/admin/dziennik", "/admin/dziennik/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/account/password").authenticated()
                 .requestMatchers("/dashboard/backup/download", "/realizacja/backup/download").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET,
                         "/admin/grants/new", "/admin/grants/*/edit",

@@ -682,8 +682,11 @@ public class DataInitializer implements CommandLineRunner {
 
     private void syncAdminUser(Role adminRole, Organization organization) {
         User admin = userRepository.findByEmail(adminEmail).orElseGet(User::new);
+        boolean newAccount = admin.getId() == null;
         admin.setEmail(adminEmail);
-        admin.setPassword(passwordEncoder.encode(adminPassword));
+        if (newAccount) {
+            admin.setPassword(passwordEncoder.encode(adminPassword));
+        }
         admin.setFirstName(adminFirstName);
         admin.setLastName(adminLastName);
         admin.setEnabled(true);

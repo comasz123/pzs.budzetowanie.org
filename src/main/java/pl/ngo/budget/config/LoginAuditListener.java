@@ -5,11 +5,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.event.AbstractAuthenticationFailureEvent;
+import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
+import org.springframework.security.authentication.event.AuthenticationFailureCredentialsExpiredEvent;
 import org.springframework.security.authentication.event.AuthenticationFailureDisabledEvent;
+import org.springframework.security.authentication.event.AuthenticationFailureExpiredEvent;
+import org.springframework.security.authentication.event.AuthenticationFailureLockedEvent;
 import org.springframework.security.authentication.event.InteractiveAuthenticationSuccessEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import pl.ngo.budget.repository.UserRepository;
 import pl.ngo.budget.service.AuditService;
 
 @Component
@@ -18,9 +23,11 @@ public class LoginAuditListener {
     private static final Logger log = LoggerFactory.getLogger(LoginAuditListener.class);
 
     private final AuditService auditService;
+    private final UserRepository userRepository;
 
-    public LoginAuditListener(AuditService auditService) {
+    public LoginAuditListener(AuditService auditService, UserRepository userRepository) {
         this.auditService = auditService;
+        this.userRepository = userRepository;
     }
 
     @EventListener
@@ -37,9 +44,30 @@ public class LoginAuditListener {
     @EventListener
     public void onFailure(AbstractAuthenticationFailureEvent event) {
         String name = event.getAuthentication() == null ? null : event.getAuthentication().getName();
-        String detail = event instanceof AuthenticationFailureDisabledEvent ? "konto wyłączone" : null;
         HttpServletRequest request = currentRequest();
-        record(() -> auditService.loginResult(false, name, detail, request));
+        record(() -> auditService.loginResult(false, name, failureReason(event, name), request));
+    }
+
+    private String failureReason(AbstractAuthenticationFailureEvent event, String name) {
+        if (event instanceof AuthenticationFailureDisabledEvent) {
+            return "konto wyłączone";
+        }
+        if (event instanceof AuthenticationFailureLockedEvent) {
+            return "konto zablokowane";
+        }
+        if (event instanceof AuthenticationFailureExpiredEvent) {
+            return "konto wygasło";
+        }
+        if (event instanceof AuthenticationFailureCredentialsExpiredEvent) {
+            return "hasło wygasło";
+        }
+        if (event instanceof AuthenticationFailureBadCredentialsEvent) {
+            if (name == null || name.isBlank() || userRepository.findByEmail(name).isEmpty()) {
+                return "nieznany adres e-mail";
+            }
+            return "złe hasło";
+        }
+        return "błąd logowania";
     }
 
     private static void record(Runnable action) {
