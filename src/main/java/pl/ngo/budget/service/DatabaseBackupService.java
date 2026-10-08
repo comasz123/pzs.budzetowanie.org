@@ -122,7 +122,7 @@ public class DatabaseBackupService {
         processBuilder.redirectErrorStream(true);
 
         Process process = processBuilder.start();
-        String errorOutput = new String(process.getInputStream().readAllBytes());
+        String errorOutput = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
         int exitCode = process.waitFor();
         if (exitCode != 0 || !Files.isRegularFile(target) || Files.size(target) == 0) {
             throw new IOException(

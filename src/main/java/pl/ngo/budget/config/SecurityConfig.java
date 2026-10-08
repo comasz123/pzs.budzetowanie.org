@@ -20,13 +20,16 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
     private final boolean requireAuth;
     private final boolean requireHttps;
+    private final String rememberMeKey;
 
     public SecurityConfig(UserDetailsService userDetailsService,
                           @Value("${app.security.require-auth:true}") boolean requireAuth,
-                          @Value("${app.security.require-https:false}") boolean requireHttps) {
+                          @Value("${app.security.require-https:false}") boolean requireHttps,
+                          @Value("${app.security.remember-me-key:}") String rememberMeKey) {
         this.userDetailsService = userDetailsService;
         this.requireAuth = requireAuth;
         this.requireHttps = requireHttps;
+        this.rememberMeKey = rememberMeKey;
     }
 
     @Bean
@@ -34,6 +37,11 @@ public class SecurityConfig {
         if (!requireAuth) {
             http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
             return http.build();
+        }
+
+        if (rememberMeKey == null || rememberMeKey.isBlank()) {
+            throw new IllegalStateException(
+                    "Brak app.security.remember-me-key w application.properties (wymagany przy require-auth=true)");
         }
 
         http
@@ -71,7 +79,7 @@ public class SecurityConfig {
                 .permitAll()
             )
             .rememberMe(remember -> remember
-                .key("budget-ngo-remember-me")
+                .key(rememberMeKey)
                 .userDetailsService(userDetailsService)
                 .tokenValiditySeconds(REMEMBER_ME_SECONDS)
                 .useSecureCookie(requireHttps)

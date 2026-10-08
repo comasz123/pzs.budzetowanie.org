@@ -4,8 +4,15 @@ spring.application.name=budget
 server.forward-headers-strategy=framework
 
 # Lokalnie: false. Na serwerze: true
+# TYLKO lokalnie false (bez logowania). Na serwerze musi być true, a domyślnie aplikacja wymaga logowania.
 app.security.require-auth=false
 app.security.require-https=false
+# Klucz podpisu ciasteczka "zapamiętaj mnie" — unikalny dla każdej instalacji, min. 32 znaki
+# (wygeneruj: openssl rand -hex 32). Zmiana klucza wylogowuje wszystkich.
+app.security.remember-me-key=CHANGE_ME
+# Adres tej instalacji (nagłówek Host musi się zgadzać, inaczej 404). Lokalnie dopuść localhost.
+app.host=ngo.budzetowanie.org
+app.allow-localhost=true
 # false na serwerze — seed tylko uzupełnia braki, nie nadpisuje zmian użytkownika
 app.seed.overwrite-existing=false
 # false = pusta instalacja (organizacja, role, admin, kategorie). Bez pracowników, grantów i wydatków.

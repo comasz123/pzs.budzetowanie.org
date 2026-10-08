@@ -84,7 +84,7 @@
                     <td th:text="${event.username != null ? event.username : '—'}">email</td>
                     <td>
                         <span class="badge"
-                              th:classappend="${event.type.name() == 'LOGIN_FAILURE'} ? 'text-bg-danger' : (${event.type.name() == 'LOGIN_SUCCESS'} ? 'text-bg-success' : (${event.type.name() == 'CHANGE'} ? 'text-bg-primary' : 'text-bg-secondary'))"
+                              th:classappend="${event.type.name() == 'LOGIN_FAILURE' or event.type.name() == 'PASSWORD_FAILURE'} ? 'text-bg-danger' : (${event.type.name() == 'LOGIN_SUCCESS'} ? 'text-bg-success' : (${event.type.name() == 'CHANGE'} ? 'text-bg-primary' : 'text-bg-secondary'))"
                               th:text="${event.type.label}">Zdarzenie</span>
                     </td>
                     <td class="small" th:text="${event.detail != null ? event.detail : '—'}">—</td>

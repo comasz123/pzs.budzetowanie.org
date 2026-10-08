@@ -34,7 +34,7 @@ public class Organization {
     private String phone;
     private String website;
 
-    /** Domena tenantu, np. ngo.budzetowanie.org */
+    /** Domena tej instalacji, np. ngo.budzetowanie.org */
     @Column(nullable = false, unique = true)
     private String host;
 

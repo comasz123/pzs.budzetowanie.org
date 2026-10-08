@@ -9,14 +9,17 @@ server.forward-headers-strategy=native
 
 app.security.require-auth=true
 app.security.require-https=true
+# Klucz podpisu ciasteczka "zapamiętaj mnie" — unikalny dla każdej instalacji, min. 32 znaki
+# (wygeneruj: openssl rand -hex 32). Zmiana klucza wylogowuje wszystkich.
+app.security.remember-me-key=CHANGE_ME
 app.seed.overwrite-existing=false
 app.seed.demo-data=false
 
 server.servlet.session.cookie.secure=true
 server.servlet.session.cookie.same-site=lax
 
-app.tenant.demo-host=pzs.budzetowanie.org
-app.tenant.localhost-as-demo=false
+app.host=pzs.budzetowanie.org
+app.allow-localhost=false
 
 app.org.code=pzs
 app.org.name=PZS

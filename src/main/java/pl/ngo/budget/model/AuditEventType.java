@@ -4,7 +4,8 @@ public enum AuditEventType {
     LOGIN_PAGE("Otworzył logowanie"),
     LOGIN_SUCCESS("Logowanie udane"),
     LOGIN_FAILURE("Logowanie nieudane"),
-    CHANGE("Zmiana");
+    CHANGE("Zmiana"),
+    PASSWORD_FAILURE("Zmiana hasła nieudana");
 
     private final String label;
 

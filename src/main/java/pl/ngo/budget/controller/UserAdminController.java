@@ -110,10 +110,6 @@ public class UserAdminController {
     }
 
     private long enabledAdminCountExcept(Long userId) {
-        return userRepository.findAll().stream()
-                .filter(User::isEnabled)
-                .filter(user -> !user.getId().equals(userId))
-                .filter(this::isAdmin)
-                .count();
+        return userRepository.countByEnabledTrueAndIdNotAndRoles_Name(userId, AppRoles.ADMIN);
     }
 }

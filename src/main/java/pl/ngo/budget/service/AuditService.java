@@ -66,6 +66,14 @@ public class AuditService {
         persist(AuditEventType.CHANGE, currentUsername(), describe(request), request);
     }
 
+    @Transactional
+    public void passwordChange(boolean success, String username, HttpServletRequest request) {
+        persist(success ? AuditEventType.CHANGE : AuditEventType.PASSWORD_FAILURE,
+                cleanUsername(username),
+                success ? "Zmiana własnego hasła" : "Nieudana zmiana hasła",
+                request);
+    }
+
     private void persist(AuditEventType type, String username, String detail, HttpServletRequest request) {
         AuditEvent event = new AuditEvent();
         event.setCreatedAt(LocalDateTime.now());
@@ -183,9 +191,6 @@ public class AuditService {
         }
         if (path.contains("/admin/users/") && path.endsWith("/enabled")) {
             return "Zmiana statusu konta";
-        }
-        if (path.endsWith("/account/password")) {
-            return "Zmiana własnego hasła";
         }
         return "Zapis " + path;
     }

@@ -12,27 +12,27 @@ import java.util.Optional;
 public class TenantHostService {
 
     private final OrganizationRepository organizationRepository;
-    private final String demoHost;
-    private final boolean localhostAsDemo;
+    private final String appHost;
+    private final boolean allowLocalhost;
 
     public TenantHostService(OrganizationRepository organizationRepository,
-                             @Value("${app.tenant.demo-host:ngo.budzetowanie.org}") String demoHost,
-                             @Value("${app.tenant.localhost-as-demo:true}") boolean localhostAsDemo) {
+                             @Value("${app.host:ngo.budzetowanie.org}") String host,
+                             @Value("${app.allow-localhost:false}") boolean allowLocalhost) {
         this.organizationRepository = organizationRepository;
-        this.demoHost = demoHost.trim().toLowerCase(Locale.ROOT);
-        this.localhostAsDemo = localhostAsDemo;
+        this.appHost = host.trim().toLowerCase(Locale.ROOT);
+        this.allowLocalhost = allowLocalhost;
     }
 
-    public Optional<Organization> resolveOrganization(String host) {
-        String normalized = normalizeHost(host);
+    public Optional<Organization> resolveOrganization(String requestHost) {
+        String normalized = normalizeHost(requestHost);
 
         Optional<Organization> byHost = organizationRepository.findByHost(normalized);
         if (byHost.isPresent()) {
             return byHost;
         }
 
-        if (isLocalDevHost(normalized) && localhostAsDemo) {
-            return organizationRepository.findByHost(demoHost);
+        if (isLocalDevHost(normalized) && allowLocalhost) {
+            return organizationRepository.findByHost(appHost);
         }
 
         return Optional.empty();

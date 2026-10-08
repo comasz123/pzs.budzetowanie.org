@@ -143,8 +143,8 @@ public class DataInitializer implements CommandLineRunner {
     @Value("${app.org.legal-name:PZS}")
     private String emptyOrgLegalName;
 
-    @Value("${app.tenant.demo-host:ngo.budzetowanie.org}")
-    private String demoOrgHost;
+    @Value("${app.host:ngo.budzetowanie.org}")
+    private String orgHost;
 
     @Value("${app.budget.clear-2025-on-startup:false}")
     private boolean clear2025OnStartup;
@@ -640,11 +640,15 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private Organization ensureEmptyOrganization() {
-        String host = demoOrgHost != null && !demoOrgHost.isBlank() ? demoOrgHost.trim() : emptyOrgCode;
+        String host = orgHost != null && !orgHost.isBlank() ? orgHost.trim() : emptyOrgCode;
         Organization organization = organizationRepository.findByCode(emptyOrgCode)
                 .or(() -> organizationRepository.findByHost(host))
                 .orElseGet(Organization::new);
         if (organization.getId() != null) {
+            if (!host.equals(organization.getHost())) {
+                organization.setHost(host);
+                return organizationRepository.save(organization);
+            }
             return organization;
         }
         organization.setCode(emptyOrgCode);
@@ -672,7 +676,7 @@ public class DataInitializer implements CommandLineRunner {
         organization.setEmail("biuro@greenfuture.org.pl");
         organization.setPhone("+48 22 123 45 67");
         organization.setWebsite("https://greenfuture.org.pl");
-        organization.setHost(demoOrgHost != null && !demoOrgHost.isBlank() ? demoOrgHost : DEMO_ORG_HOST);
+        organization.setHost(orgHost != null && !orgHost.isBlank() ? orgHost : DEMO_ORG_HOST);
         organization.setDemo(true);
         organization.setActive(true);
         Organization saved = organizationRepository.save(organization);

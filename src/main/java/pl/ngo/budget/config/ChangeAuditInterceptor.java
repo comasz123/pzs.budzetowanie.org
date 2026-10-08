@@ -33,7 +33,8 @@ public class ChangeAuditInterceptor implements HandlerInterceptor {
             return;
         }
         String path = request.getRequestURI() == null ? "" : request.getRequestURI();
-        if (path.endsWith("/login") || path.endsWith("/logout")) {
+        // logowanie i zmianę hasła zapisują własne wpisy (wynik zależy od poprawności danych)
+        if (path.endsWith("/login") || path.endsWith("/logout") || path.endsWith("/account/password")) {
             return;
         }
         try {
