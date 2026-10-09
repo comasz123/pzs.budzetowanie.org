@@ -285,27 +285,7 @@ public class BudgetMatrixService {
             months.add(buildDashboard(fiscalYear, month));
         }
         replaceCostsWithSumOfMonths(year, months);
-        applyGrantRemainingToSpend(year);
         return year;
-    }
-
-    /**
-     * Zostało do wydania: budżet grantu albo suma planu pokrycia na ten rok,
-     * minus kwoty pokrycia stojące na pozycjach budżetu w kolumnie grantu.
-     */
-    private static void applyGrantRemainingToSpend(BudgetDashboardDto dto) {
-        Map<String, BigDecimal> remaining = new LinkedHashMap<>();
-        Map<String, BigDecimal> poolByGrant = dto.getGrantTotalByName() != null
-                ? dto.getGrantTotalByName() : Map.of();
-        Map<String, BigDecimal> allocatedByGrant = dto.getTotalCoverageByGrant() != null
-                ? dto.getTotalCoverageByGrant() : Map.of();
-        for (String grantName : dto.getGrantNames()) {
-            BigDecimal pool = poolByGrant.getOrDefault(grantName, BigDecimal.ZERO);
-            BigDecimal allocated = allocatedByGrant.getOrDefault(grantName, BigDecimal.ZERO);
-            remaining.put(grantName, pool.subtract(allocated).setScale(2, RoundingMode.HALF_UP));
-        }
-        dto.setGrantRemainingByName(remaining);
-        dto.setGrantRemainingTotal(remaining.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 
     private void replaceCostsWithSumOfMonths(BudgetDashboardDto year, List<BudgetDashboardDto> months) {

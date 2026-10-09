@@ -30,7 +30,7 @@
         <td class="text-end col-amount text-muted col-sticky-balance">—</td>
     </tr>
     <tr class="grant-year-split d-none">
-        <td class="col-label" th:text="|Reszta na rok ${selectedYear + 1}|">Reszta na rok 2027</td>
+        <td class="col-label" th:text="|Alokowano na rok ${selectedYear + 1}|">Alokowano na rok 2027</td>
         <td class="text-end col-amount text-muted col-sticky-planned">—</td>
         <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
             th:text="${budgetData.grantNextYearByName.get(grant) != null ? #numbers.formatDecimal(budgetData.grantNextYearByName.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>

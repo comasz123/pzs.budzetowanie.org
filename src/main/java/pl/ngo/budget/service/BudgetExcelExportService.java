@@ -130,7 +130,7 @@ public class BudgetExcelExportService {
                     grants, annual.getGrantFullTotalByName(), balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Suma na rok " + fiscalYear,
                     grants, annual.getGrantYearAmountByName(), balanceColumn);
-            rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Reszta na rok " + (fiscalYear + 1),
+            rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Alokowano na rok " + (fiscalYear + 1),
                     grants, annual.getGrantNextYearByName(), balanceColumn);
             rowIndex++;
         }
@@ -203,7 +203,7 @@ public class BudgetExcelExportService {
                     grants, dashboard.getGrantFullTotalByName(), balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Suma na rok " + fiscalYear,
                     grants, dashboard.getGrantYearAmountByName(), balanceColumn);
-            rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Reszta na rok " + (fiscalYear + 1),
+            rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Alokowano na rok " + (fiscalYear + 1),
                     grants, dashboard.getGrantNextYearByName(), balanceColumn);
             rowIndex++;
         }

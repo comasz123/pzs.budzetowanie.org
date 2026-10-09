@@ -937,13 +937,16 @@ public class GrantBudgetService {
             }
             String name = grant.getName();
             BigDecimal coverage = coveragePlanSum(grant, fiscalYear);
-            BigDecimal yearAmount = GrantYearSpendable.inYear(grant, fiscalYear);
+            BigDecimal yearAmount = allocatedInYear(grant, fiscalYear);
+            BigDecimal nextYearAmount = allocatedInYear(grant, fiscalYear + 1);
             BigDecimal displayedTotal = GrantYearSpendable.displayedTotal(grant, fiscalYear, coverage);
             yearAmountByName.put(name, yearAmount);
             totalByName.put(name, displayedTotal);
             fullTotalByName.put(name, GrantYearSpendable.total(grant));
-            remainingByName.put(name, displayedTotal.subtract(coverage).setScale(2, RoundingMode.HALF_UP));
-            nextYearByName.put(name, GrantYearSpendable.afterYear(grant, fiscalYear));
+            // Tak samo jak „Pozostało” na liście grantów: kwota grantu minus alokacja w tym i następnym roku.
+            remainingByName.put(name, GrantYearSpendable.total(grant).subtract(yearAmount).subtract(nextYearAmount)
+                    .setScale(2, RoundingMode.HALF_UP));
+            nextYearByName.put(name, nextYearAmount);
         }
         return new GrantSpendPlan(yearAmountByName, totalByName, fullTotalByName, remainingByName, nextYearByName);
     }

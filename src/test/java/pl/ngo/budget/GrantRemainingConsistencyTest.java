@@ -9,7 +9,6 @@ import pl.ngo.budget.service.BudgetMatrixService;
 import pl.ngo.budget.service.GrantBudgetService;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,22 +30,13 @@ class GrantRemainingConsistencyTest {
 
         for (GrantListRowDto row : grantBudgetService.buildGrantListRows(year)) {
             String grantName = row.getGrant().getName();
-            BigDecimal total = row.getGrant().getTotalAmount();
-            BigDecimal leftToSpend = dashboardRemaining.get(grantName);
-            BigDecimal yearAmount = dashboard.getGrantYearAmountByName().get(grantName);
-            BigDecimal shownTotal = dashboard.getGrantTotalByName().get(grantName);
-            BigDecimal allocated = dashboard.getTotalCoverageByGrant().getOrDefault(grantName, BigDecimal.ZERO);
-            BigDecimal nextYear = dashboard.getGrantNextYearByName().get(grantName);
-            boolean runsPastYear = row.getGrant().getEndDate() != null
-                    && row.getGrant().getEndDate().getYear() > year;
-            if (!runsPastYear) {
-                assertEquals(0, total.compareTo(shownTotal), grantName);
-            }
-            assertEquals(0, shownTotal.subtract(allocated).setScale(2, RoundingMode.HALF_UP).compareTo(leftToSpend),
-                    grantName);
-            assertEquals(true, yearAmount.signum() >= 0, grantName);
-            assertEquals(true, nextYear.signum() >= 0, grantName);
-            assertEquals(true, yearAmount.add(nextYear).compareTo(total) <= 0, grantName);
+            assertEquals(0, row.getRemaining().compareTo(dashboardRemaining.get(grantName)), grantName);
+            assertEquals(0, row.getAllocatedInYear()
+                    .compareTo(dashboard.getGrantYearAmountByName().get(grantName)), grantName);
+            assertEquals(0, row.getAllocatedNextYear()
+                    .compareTo(dashboard.getGrantNextYearByName().get(grantName)), grantName);
+            assertEquals(0, row.getGrant().getTotalAmount()
+                    .compareTo(dashboard.getGrantFullTotalByName().get(grantName)), grantName);
         }
     }
 
