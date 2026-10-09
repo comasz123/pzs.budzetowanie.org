@@ -21,6 +21,8 @@ public class BudgetStructureItemDto {
     private boolean navigable = true;
     private boolean deletable;
     private Long categoryTemplateId;
+    /** Nazwę można zmienić (kategoria albo podpozycja; nie linie alokacji kosztów). */
+    private boolean renamable;
     private BigDecimal plannedAmount;
     /** Podpozycje (całe drzewo) — wypełniane przy {@code getTree}. */
     private List<BudgetStructureItemDto> children = new ArrayList<>();

@@ -5,8 +5,14 @@
     <li th:each="item : ${items}" class="structure-node" th:attr="data-row-key=${item.rowKey}">
         <div class="structure-row d-flex flex-wrap align-items-center gap-2 py-2 border-bottom"
              th:style="|padding-left:${depth * 1.75 + 0.5}rem|">
-            <span th:classappend="${#lists.isEmpty(item.children)} ? '' : 'fw-semibold'"
-                  class="flex-grow-1" th:text="${item.name}">Pozycja</span>
+            <input th:if="${item.renamable}" type="text"
+                   class="form-control form-control-sm structure-name flex-grow-1 border-0 bg-transparent"
+                   style="min-width: 12rem; width: auto;"
+                   th:classappend="${#lists.isEmpty(item.children)} ? '' : 'fw-semibold'"
+                   title="Kliknij, aby zmienić nazwę"
+                   th:value="${item.name}" th:attr="data-original=${item.name}, data-parent-row-key=${item.parentRowKey}, data-row-key=${item.rowKey}, data-category-id=${item.categoryTemplateId}"/>
+            <span th:unless="${item.renamable}" class="flex-grow-1 px-2"
+                  th:text="${item.name}">Pozycja</span>
             <div class="input-group input-group-sm" style="width: 9.5rem;">
                 <input type="text"
                        inputmode="decimal"

@@ -2379,6 +2379,9 @@ public class BudgetMatrixService {
 
     private void applySubcategoryOverlay(BudgetItemRowDto child, BudgetSubcategoryOrder entry, Integer evenMonth) {
         child.setExpandable(!entry.isHidden());
+        if (entry.getName() != null && !entry.getName().isBlank()) {
+            child.setItemName(entry.getName());
+        }
         BigDecimal planned = monthlyPlanned(entry.getPlannedAmount(), evenMonth);
         if (planned != null) {
             child.setTotalCost(planned);

@@ -301,6 +301,59 @@ public class BudgetSetupService {
         return createBudgetTemplate(uniqueTemplateCode(normalized), normalized);
     }
 
+    /** Kategorie, które logika budżetu rozpoznaje po nazwie — bez zmiany nazwy. */
+    private static final java.util.Set<String> BUILT_IN_CATEGORY_CODES = java.util.Set.of(
+            "KOSZT_PER", "KOSZT_MAT", "KOSZT_KSW", "KOSZT_LOG", "KOSZT_PROM", "KOSZT_ADM", "KOSZT_SPRZ");
+
+    @Transactional
+    public void renameBudgetCategory(Long categoryId, String name) {
+        String normalized = normalize(name);
+        if (normalized == null) {
+            throw new IllegalArgumentException("Podaj nazwę kategorii");
+        }
+        BudgetItemTemplate category = budgetItemTemplateRepository.findById(categoryId)
+                .orElseThrow(() -> new IllegalArgumentException("Pozycja budżetowa nie istnieje"));
+        if (BUILT_IN_CATEGORY_CODES.contains(category.getCode())) {
+            throw new IllegalArgumentException("Nazwy wbudowanej kategorii nie można zmienić — budżet rozpoznaje ją po nazwie");
+        }
+        budgetItemTemplateRepository.findByName(normalized)
+                .filter(other -> !other.getId().equals(category.getId()))
+                .ifPresent(other -> {
+                    throw new IllegalArgumentException("Kategoria „" + normalized + "” już istnieje");
+                });
+        category.setName(normalized);
+        budgetItemTemplateRepository.save(category);
+    }
+
+    @Transactional
+    public void renameBudgetSubcategory(String parentRowKey, String rowKey, String name) {
+        String parent = normalize(parentRowKey);
+        String key = normalize(rowKey);
+        String normalized = normalize(name);
+        if (parent == null || key == null) {
+            throw new IllegalArgumentException("Brak identyfikatora podpozycji");
+        }
+        if (normalized == null) {
+            throw new IllegalArgumentException("Podaj nazwę podpozycji");
+        }
+        BudgetSubcategoryOrder entry = budgetSubcategoryOrderRepository
+                .findByParentRowKeyAndRowKey(parent, key)
+                .orElseGet(BudgetSubcategoryOrder::new);
+        entry.setParentRowKey(parent);
+        entry.setRowKey(key);
+        entry.setName(normalized);
+        if (entry.getId() == null) {
+            int nextOrder = budgetSubcategoryOrderRepository.findByParentRowKeyOrderByDisplayOrderAsc(parent).stream()
+                    .mapToInt(BudgetSubcategoryOrder::getDisplayOrder)
+                    .max()
+                    .orElse(0) + 10;
+            entry.setDisplayOrder(nextOrder);
+            entry.setHidden(false);
+            entry.setHasSubcategories(true);
+        }
+        budgetSubcategoryOrderRepository.save(entry);
+    }
+
     @Transactional
     public void deleteBudgetCategory(Long categoryId) {
         BudgetItemTemplate category = budgetItemTemplateRepository.findById(categoryId)

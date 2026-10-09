@@ -266,11 +266,37 @@ public class DashboardController {
     @GetMapping({"/dashboard/structure", "/realizacja/structure"})
     public String structure(@RequestParam String rowKey,
                             @RequestParam(required = false) Integer year,
-                            Model model) {
+                            Model model,
+                            HttpServletRequest request) {
+        ensureSession(request);
         int selectedYear = year != null ? year : LocalDate.now().getYear();
         model.addAttribute("selectedYear", selectedYear);
         model.addAttribute("structureNode", budgetStructureService.getTree(selectedYear, rowKey));
         return "dashboard-structure";
+    }
+
+    @PostMapping({"/dashboard/categories/{id}/rename", "/realizacja/categories/{id}/rename"})
+    @ResponseBody
+    public ResponseEntity<String> renameBudgetCategory(@PathVariable Long id, @RequestParam String name) {
+        try {
+            budgetSetupService.renameBudgetCategory(id, name);
+            return ResponseEntity.ok("ok");
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage() != null ? ex.getMessage() : "Nie udało się zmienić nazwy");
+        }
+    }
+
+    @PostMapping({"/dashboard/subcategories/rename", "/realizacja/subcategories/rename"})
+    @ResponseBody
+    public ResponseEntity<String> renameBudgetSubcategory(@RequestParam String parentRowKey,
+                                                          @RequestParam String rowKey,
+                                                          @RequestParam String name) {
+        try {
+            budgetSetupService.renameBudgetSubcategory(parentRowKey, rowKey, name);
+            return ResponseEntity.ok("ok");
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage() != null ? ex.getMessage() : "Nie udało się zmienić nazwy");
+        }
     }
 
     @PostMapping({"/dashboard/month/amount", "/realizacja/month/amount"})

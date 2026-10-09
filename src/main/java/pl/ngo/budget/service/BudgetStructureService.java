@@ -23,6 +23,9 @@ public class BudgetStructureService {
 
     private static final String WYNAGRODZENIA_ROW_KEY = "wynagrodzenia";
     private static final String ADMIN_WYNAGRODZENIA_KEY = "admin-wynagrodzenia";
+    /** Wbudowane kategorie główne — ich nazw nie można zmieniać (budżet rozpoznaje je po nazwie). */
+    private static final java.util.Set<String> BUILT_IN_ROW_KEYS = java.util.Set.of(
+            "wynagrodzenia", "publikacje", "wydarzenia", "podroze", "koszty-administracyjne", "promocja", "sprzet");
 
     private final BudgetMatrixService budgetMatrixService;
     private final BudgetSubcategoryOrderRepository budgetSubcategoryOrderRepository;
@@ -48,6 +51,11 @@ public class BudgetStructureService {
         node.setRowKey(row.getRowKey());
         node.setName(row.getItemName());
         node.setEditable(!WYNAGRODZENIA_ROW_KEY.equals(row.getRowKey()));
+        BudgetDashboardDto.CategoryOrderInfo ownOrder = dashboard.getCategoryOrderByRowKey() != null
+                ? dashboard.getCategoryOrderByRowKey().get(row.getRowKey()) : null;
+        node.setCategoryTemplateId(ownOrder != null && !BUILT_IN_ROW_KEYS.contains(row.getRowKey())
+                ? ownOrder.getCategoryId() : null);
+        node.setParentRowKey(breadcrumbs.isEmpty() ? null : breadcrumbs.get(breadcrumbs.size() - 1).getRowKey());
         node.setEvenMonthlySplit(isEvenMonthlySplit(row.getRowKey(), breadcrumbs));
         node.setBreadcrumbs(buildBreadcrumbs(breadcrumbs, row));
         node.setItems(buildItems(row, dashboard.getCategoryOrderByRowKey()));
@@ -166,6 +174,7 @@ public class BudgetStructureService {
         item.setName(child.getItemName());
         item.setParentRowKey(parentRowKey);
         item.setNavigable(isNavigable(child.getRowKey()));
+        item.setRenamable(true);
         item.setDeletable(isDeletable(child.getRowKey(), parentRowKey, stored, categoryOrderByRowKey));
         item.setPlannedAmount(resolvePlannedAmount(stored, child.getTotalCost()));
         if (categoryOrderByRowKey != null && child.getRowKey() != null) {
