@@ -911,12 +911,15 @@ public class GrantBudgetService {
             if (grant.getTranches() != null) {
                 grant.getTranches().size();
             }
+            BigDecimal allocated = allocatedInYear(grant, fiscalYear);
+            BigDecimal allocatedNext = allocatedInYear(grant, fiscalYear + 1);
             rows.add(new GrantListRowDto(
                     grant,
                     opening,
                     spent,
-                    GrantYearSpendable.allocatedByActiveMonths(grant, fiscalYear),
-                    computeGrantRemaining(grant, totals, fiscalYear)));
+                    allocated,
+                    allocatedNext,
+                    total.subtract(allocated).subtract(allocatedNext).setScale(2, RoundingMode.HALF_UP)));
         }
         return rows;
     }
@@ -925,6 +928,7 @@ public class GrantBudgetService {
     public GrantSpendPlan computeGrantSpendPlan(List<Grant> grants, int fiscalYear) {
         Map<String, BigDecimal> yearAmountByName = new LinkedHashMap<>();
         Map<String, BigDecimal> totalByName = new LinkedHashMap<>();
+        Map<String, BigDecimal> fullTotalByName = new LinkedHashMap<>();
         Map<String, BigDecimal> remainingByName = new LinkedHashMap<>();
         Map<String, BigDecimal> nextYearByName = new LinkedHashMap<>();
         for (Grant grant : grants) {
@@ -937,10 +941,11 @@ public class GrantBudgetService {
             BigDecimal displayedTotal = GrantYearSpendable.displayedTotal(grant, fiscalYear, coverage);
             yearAmountByName.put(name, yearAmount);
             totalByName.put(name, displayedTotal);
+            fullTotalByName.put(name, GrantYearSpendable.total(grant));
             remainingByName.put(name, displayedTotal.subtract(coverage).setScale(2, RoundingMode.HALF_UP));
             nextYearByName.put(name, GrantYearSpendable.afterYear(grant, fiscalYear));
         }
-        return new GrantSpendPlan(yearAmountByName, totalByName, remainingByName, nextYearByName);
+        return new GrantSpendPlan(yearAmountByName, totalByName, fullTotalByName, remainingByName, nextYearByName);
     }
 
     private static BigDecimal coveragePlanTotal(GrantBudgetViewDto dto, boolean year2027) {
@@ -954,6 +959,16 @@ public class GrantBudgetService {
             }
         }
         return sum.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** Plan pokrycia w danym roku; poza okresem trwania grantu zero (kwota bez podziału na lata nie liczy się podwójnie). */
+    private static BigDecimal allocatedInYear(Grant grant, int year) {
+        boolean beforeStart = grant.getStartDate() != null && year < grant.getStartDate().getYear();
+        boolean afterEnd = grant.getEndDate() != null && year > grant.getEndDate().getYear();
+        if (beforeStart || afterEnd) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return coveragePlanSum(grant, year);
     }
 
     private static BigDecimal coveragePlanSum(Grant grant, int fiscalYear) {
@@ -1024,6 +1039,7 @@ public class GrantBudgetService {
     public record GrantSpendPlan(
             Map<String, BigDecimal> yearAmountByName,
             Map<String, BigDecimal> totalByName,
+            Map<String, BigDecimal> fullTotalByName,
             Map<String, BigDecimal> remainingByName,
             Map<String, BigDecimal> nextYearByName) {
     }

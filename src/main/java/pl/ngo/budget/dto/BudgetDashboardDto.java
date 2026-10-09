@@ -27,6 +27,8 @@ public class BudgetDashboardDto {
     private Map<String, BigDecimal> grantYearAmountByName = new HashMap<>();
     /** Full grant amount, shown after expanding the remaining row. */
     private Map<String, BigDecimal> grantTotalByName = new HashMap<>();
+    /** Kwota grantu z umowy (całość, niezależnie od roku) — wiersz „Całkowita suma grantu”. */
+    private Map<String, BigDecimal> grantFullTotalByName = new HashMap<>();
     /** Grant amount left for years after the displayed budget year. */
     private Map<String, BigDecimal> grantNextYearByName = new HashMap<>();
     /** Sum of {@link #grantRemainingByName}. */

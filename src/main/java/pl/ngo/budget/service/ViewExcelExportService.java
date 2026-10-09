@@ -97,7 +97,8 @@ public class ViewExcelExportService {
         try (ExcelTables excel = ExcelTables.create()) {
             Sheet sheet = excel.sheet("Granty " + fiscalYear);
             excel.headers(sheet, "Kod", "Nazwa", "Sponsor", "Projekt", "Od", "Do",
-                    "Całkowity budżet", "Alokowane w " + fiscalYear, "Pozostało", "Aktywny");
+                    "Całkowity budżet", "Alokowane w " + fiscalYear, "Alokowane w " + (fiscalYear + 1),
+                    "Pozostało", "Aktywny");
             int rowIndex = 1;
             for (GrantListRowDto row : rows) {
                 Grant grant = row.getGrant();
@@ -110,10 +111,11 @@ public class ViewExcelExportService {
                 excel.date(excelRow, 5, grant.getEndDate());
                 excel.money(excelRow, 6, grant.getTotalAmount());
                 excel.money(excelRow, 7, row.getAllocatedInYear());
-                excel.money(excelRow, 8, row.getRemaining());
-                excel.text(excelRow, 9, grant.isActive() ? "Tak" : "Nie");
+                excel.money(excelRow, 8, row.getAllocatedNextYear());
+                excel.money(excelRow, 9, row.getRemaining());
+                excel.text(excelRow, 10, grant.isActive() ? "Tak" : "Nie");
             }
-            excel.layout(sheet, Math.max(rowIndex - 1, 1), 9, 28);
+            excel.layout(sheet, Math.max(rowIndex - 1, 1), 10, 28);
             excel.write(output);
         }
     }

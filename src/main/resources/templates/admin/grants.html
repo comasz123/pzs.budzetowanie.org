@@ -30,6 +30,7 @@
                     <th>Czas trwania</th>
                     <th class="text-end">Całkowity budżet</th>
                     <th class="text-end" th:text="|Alokowane w ${fiscalYear}|">Alokowane w roku</th>
+                    <th class="text-end" th:text="|Alokowane w ${fiscalYear + 1}|">Alokowane w następnym roku</th>
                     <th class="text-end">Pozostało</th>
                     <th>Aktywny</th>
                 </tr>
@@ -52,6 +53,7 @@
                     </td>
                     <td class="text-end" th:text="${grant.totalAmount != null && grant.totalAmount.signum() > 0 ? #numbers.formatDecimal(grant.totalAmount, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0</td>
                     <td class="text-end" th:text="${row.allocatedInYear != null ? #numbers.formatDecimal(row.allocatedInYear, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0</td>
+                    <td class="text-end" th:text="${row.allocatedNextYear != null ? #numbers.formatDecimal(row.allocatedNextYear, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0</td>
                     <td class="text-end"
                         th:classappend="${row.remaining != null && row.remaining.signum() < 0} ? 'text-danger fw-semibold' : ''"
                         th:text="${row.remaining != null ? #numbers.formatDecimal(row.remaining, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0</td>
@@ -61,7 +63,7 @@
                     </td>
                 </tr>
                 <tr th:if="${#lists.isEmpty(grantRows)}">
-                    <td colspan="9" class="text-muted text-center py-4">Brak grantów. Dodaj pierwszy grant.</td>
+                    <td colspan="10" class="text-muted text-center py-4">Brak grantów. Dodaj pierwszy grant.</td>
                 </tr>
                 </tbody>
             </table>

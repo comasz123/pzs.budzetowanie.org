@@ -127,7 +127,7 @@ public class BudgetExcelExportService {
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Zostało do wydania (rok)",
                     grants, annual.getGrantRemainingByName(), balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Całkowita suma grantu",
-                    grants, annual.getGrantTotalByName(), balanceColumn);
+                    grants, annual.getGrantFullTotalByName(), balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Suma na rok " + fiscalYear,
                     grants, annual.getGrantYearAmountByName(), balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Reszta na rok " + (fiscalYear + 1),
@@ -200,7 +200,7 @@ public class BudgetExcelExportService {
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Zostało do wydania (rok)",
                     grants, dashboard.getGrantRemainingByName(), balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Całkowita suma grantu",
-                    grants, dashboard.getGrantTotalByName(), balanceColumn);
+                    grants, dashboard.getGrantFullTotalByName(), balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Suma na rok " + fiscalYear,
                     grants, dashboard.getGrantYearAmountByName(), balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Reszta na rok " + (fiscalYear + 1),

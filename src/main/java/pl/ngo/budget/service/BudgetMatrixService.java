@@ -540,6 +540,7 @@ public class BudgetMatrixService {
         dto.setGrantRemainingByName(new LinkedHashMap<>());
         dto.setGrantYearAmountByName(new LinkedHashMap<>());
         dto.setGrantTotalByName(new LinkedHashMap<>());
+        dto.setGrantFullTotalByName(new LinkedHashMap<>());
         dto.setGrantNextYearByName(new LinkedHashMap<>());
         dto.setGrantRemainingTotal(BigDecimal.ZERO);
         dto.setDisplayRows(flattenRowsForDisplay(dto.getRows(), dto.getCategoryOrderByRowKey()));
@@ -889,6 +890,7 @@ public class BudgetMatrixService {
         dto.setGrantRemainingByName(grantSpendPlan.remainingByName());
         dto.setGrantYearAmountByName(grantSpendPlan.yearAmountByName());
         dto.setGrantTotalByName(grantSpendPlan.totalByName());
+        dto.setGrantFullTotalByName(grantSpendPlan.fullTotalByName());
         dto.setGrantNextYearByName(grantSpendPlan.nextYearByName());
         dto.setGrantRemainingTotal(grantSpendPlan.remainingByName().values().stream()
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
