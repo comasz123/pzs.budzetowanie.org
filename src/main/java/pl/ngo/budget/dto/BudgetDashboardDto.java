@@ -104,5 +104,7 @@ public class BudgetDashboardDto {
         private Map<String, BigDecimal> coverageByGrant = new HashMap<>();
         private List<BudgetItemRowDto> children = new ArrayList<>();
         private List<CostAllocationDto> allocations = new ArrayList<>();
+        /** Suma wiersza = podpozycje plus własne linie wydatków (wiersz z liniami dostał podkategorię). */
+        private boolean ownAllocationsCounted;
     }
 }

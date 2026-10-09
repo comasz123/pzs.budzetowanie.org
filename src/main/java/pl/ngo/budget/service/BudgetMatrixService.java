@@ -123,6 +123,7 @@ public class BudgetMatrixService {
     private final CostAllocationRepository costAllocationRepository;
     private final BudgetItemTemplateRepository budgetItemTemplateRepository;
     private final BudgetSubcategoryOrderRepository budgetSubcategoryOrderRepository;
+    private final pl.ngo.budget.repository.BudgetLineAssignmentRepository budgetLineAssignmentRepository;
     private final GrantBudgetService grantBudgetService;
 
     public BudgetMatrixService(GrantRepository grantRepository,
@@ -134,7 +135,9 @@ public class BudgetMatrixService {
                                CostAllocationRepository costAllocationRepository,
                                BudgetItemTemplateRepository budgetItemTemplateRepository,
                                BudgetSubcategoryOrderRepository budgetSubcategoryOrderRepository,
+                               pl.ngo.budget.repository.BudgetLineAssignmentRepository budgetLineAssignmentRepository,
                                GrantBudgetService grantBudgetService) {
+        this.budgetLineAssignmentRepository = budgetLineAssignmentRepository;
         this.grantRepository = grantRepository;
         this.expenditureRepository = expenditureRepository;
         this.employeeRepository = employeeRepository;
@@ -864,6 +867,8 @@ public class BudgetMatrixService {
             totalCoverage = totalCoverage.add(row.getOverallCoverage());
         }
 
+        applyLineAssignments(rows);
+
         BudgetDashboardDto dto = new BudgetDashboardDto();
         dto.setGrantNames(grantNames);
         GrantBudgetService.GrantSpendPlan grantSpendPlan = grantBudgetService.computeGrantSpendPlan(grants, fiscalYear);
@@ -1101,6 +1106,12 @@ public class BudgetMatrixService {
             BigDecimal childCost = child.getTotalCost() != null ? child.getTotalCost() : BigDecimal.ZERO;
             totalCost = totalCost.add(childCost);
             mergeGrantAmounts(byGrant, child.getCoverageByGrant());
+        }
+        if (parent.isOwnAllocationsCounted() && parent.getAllocations() != null) {
+            for (CostAllocationDto allocation : parent.getAllocations()) {
+                totalCost = totalCost.add(allocation.getAmount() != null ? allocation.getAmount() : BigDecimal.ZERO);
+                mergeGrantAmounts(byGrant, allocation.getAmountByGrant());
+            }
         }
 
         BigDecimal coverage = sumGrantMap(byGrant);
@@ -1908,6 +1919,9 @@ public class BudgetMatrixService {
         }
 
         for (CostAllocationDto dto : allocations) {
+            if (dto.getLineKey() == null) {
+                dto.setLineKey(pl.ngo.budget.util.BudgetLineKeys.of(rowKey, dto.getItemName()));
+            }
             dto.setCategory(categoryLabel);
             dto.setBalance(dto.getAmount().subtract(sumGrantMap(dto.getAmountByGrant())));
             if (totalPlanned.compareTo(BigDecimal.ZERO) > 0) {
@@ -2329,6 +2343,9 @@ public class BudgetMatrixService {
         }
         List<BudgetSubcategoryOrder> stored = budgetSubcategoryOrderRepository
                 .findByParentRowKeyOrderByDisplayOrderAsc(row.getRowKey());
+        // Wiersz z własnymi liniami wydatków: po dodaniu podkategorii jego suma to podkategorie plus te linie.
+        boolean ownLines = (row.getChildren() == null || row.getChildren().isEmpty())
+                && row.getAllocations() != null && !row.getAllocations().isEmpty();
         Set<String> hidden = stored.stream()
                 .filter(BudgetSubcategoryOrder::isHidden)
                 .map(BudgetSubcategoryOrder::getRowKey)
@@ -2374,7 +2391,89 @@ public class BudgetMatrixService {
         }
         row.setChildren(sortSubcategories(row.getRowKey(), children));
         row.setExpandable(true);
+        row.setOwnAllocationsCounted(ownLines);
         aggregateFromChildren(row, grantNames);
+    }
+
+    /**
+     * Linie wydatków przeniesione do innej kategorii: linia znika z wiersza naturalnego i trafia do docelowego,
+     * a sumy obu wierszy (i ich nadrzędnych) zmieniają się o jej kwotę.
+     */
+    private void applyLineAssignments(List<BudgetItemRowDto> rows) {
+        Map<String, String> targetByLine = new LinkedHashMap<>();
+        budgetLineAssignmentRepository.findAll()
+                .forEach(a -> targetByLine.put(a.getLineKey(), a.getTargetRowKey()));
+        if (targetByLine.isEmpty() || rows == null) {
+            return;
+        }
+        Map<String, BudgetItemRowDto> byKey = new LinkedHashMap<>();
+        indexRows(rows, byKey);
+        Map<BudgetItemRowDto, BudgetItemRowDto> parents = new java.util.IdentityHashMap<>();
+        collectParents(rows, null, parents);
+        List<Object[]> moves = new ArrayList<>();
+        for (BudgetItemRowDto source : byKey.values()) {
+            if (source.getAllocations() == null) {
+                continue;
+            }
+            for (CostAllocationDto dto : source.getAllocations()) {
+                String targetKey = dto.getLineKey() != null ? targetByLine.get(dto.getLineKey()) : null;
+                BudgetItemRowDto target = targetKey != null ? byKey.get(targetKey) : null;
+                if (target != null && target != source) {
+                    moves.add(new Object[]{source, dto, target});
+                }
+            }
+        }
+        for (Object[] move : moves) {
+            BudgetItemRowDto source = (BudgetItemRowDto) move[0];
+            CostAllocationDto dto = (CostAllocationDto) move[1];
+            BudgetItemRowDto target = (BudgetItemRowDto) move[2];
+            List<CostAllocationDto> remaining = new ArrayList<>(source.getAllocations());
+            remaining.remove(dto);
+            source.setAllocations(remaining);
+            List<CostAllocationDto> added = new ArrayList<>(
+                    target.getAllocations() != null ? target.getAllocations() : List.of());
+            added.add(dto);
+            target.setAllocations(added);
+            target.setExpandable(true);
+            if (target.getCategory() != null) {
+                dto.setCategory(target.getCategory());
+            }
+            shiftRowTotals(source, parents, dto, -1);
+            shiftRowTotals(target, parents, dto, 1);
+        }
+    }
+
+    private static void collectParents(List<BudgetItemRowDto> rows, BudgetItemRowDto parent,
+                                       Map<BudgetItemRowDto, BudgetItemRowDto> parents) {
+        if (rows == null) {
+            return;
+        }
+        for (BudgetItemRowDto row : rows) {
+            if (parent != null) {
+                parents.put(row, parent);
+            }
+            collectParents(row.getChildren(), row, parents);
+        }
+    }
+
+    private static void shiftRowTotals(BudgetItemRowDto row, Map<BudgetItemRowDto, BudgetItemRowDto> parents,
+                                       CostAllocationDto dto, int sign) {
+        BigDecimal amount = (dto.getAmount() != null ? dto.getAmount() : BigDecimal.ZERO)
+                .multiply(BigDecimal.valueOf(sign));
+        for (BudgetItemRowDto current = row; current != null; current = parents.get(current)) {
+            Map<String, BigDecimal> byGrant = new LinkedHashMap<>(
+                    current.getCoverageByGrant() != null ? current.getCoverageByGrant() : Map.of());
+            if (dto.getAmountByGrant() != null) {
+                dto.getAmountByGrant().forEach((grant, value) -> byGrant.merge(grant,
+                        value.multiply(BigDecimal.valueOf(sign)), BigDecimal::add));
+            }
+            BigDecimal total = (current.getTotalCost() != null ? current.getTotalCost() : BigDecimal.ZERO).add(amount);
+            current.setTotalCost(total);
+            current.setCoverageByGrant(byGrant);
+            BigDecimal coverage = byGrant.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+            current.setOverallCoverage(coverage);
+            current.setBalance(total.subtract(coverage));
+        }
     }
 
     private void applySubcategoryOverlay(BudgetItemRowDto child, BudgetSubcategoryOrder entry, Integer evenMonth) {

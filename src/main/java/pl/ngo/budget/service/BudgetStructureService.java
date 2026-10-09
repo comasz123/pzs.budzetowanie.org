@@ -70,7 +70,28 @@ public class BudgetStructureService {
         BudgetDashboardDto.BudgetItemRowDto row = findRowByKey(dashboard.getRows(), rowKey.trim(), new ArrayList<>())
                 .orElseThrow(() -> new IllegalArgumentException("Kategoria nie istnieje: " + rowKey));
         node.setItems(buildTree(row, dashboard.getCategoryOrderByRowKey(), 0));
+        node.setMoveTargets(buildMoveTargets(dashboard.getRows(), null));
         return node;
+    }
+
+    /** Wszystkie kategorie i podkategorie budżetu (bez pracowników i wynagrodzeń) jako cele przeniesienia wydatku. */
+    private List<BudgetStructureNodeDto.BudgetStructureBreadcrumbDto> buildMoveTargets(
+            List<BudgetDashboardDto.BudgetItemRowDto> rows, String prefix) {
+        List<BudgetStructureNodeDto.BudgetStructureBreadcrumbDto> targets = new ArrayList<>();
+        if (rows == null) {
+            return targets;
+        }
+        for (BudgetDashboardDto.BudgetItemRowDto row : rows) {
+            String key = row.getRowKey();
+            if (key == null || key.isBlank() || WYNAGRODZENIA_ROW_KEY.equals(key)
+                    || key.contains("wynagrodzenia") || key.startsWith("employee-")) {
+                continue;
+            }
+            String label = prefix == null ? row.getItemName() : prefix + " › " + row.getItemName();
+            targets.add(new BudgetStructureNodeDto.BudgetStructureBreadcrumbDto(key, label));
+            targets.addAll(buildMoveTargets(row.getChildren(), label));
+        }
+        return targets;
     }
 
     private List<BudgetStructureItemDto> buildTree(BudgetDashboardDto.BudgetItemRowDto parent,
@@ -157,6 +178,8 @@ public class BudgetStructureService {
                 item.setParentRowKey(parentRowKey);
                 item.setNavigable(false);
                 item.setDeletable(false);
+                item.setExpense(true);
+                item.setLineKey(allocation.getLineKey() != null ? allocation.getLineKey() : allocRowKey);
                 item.setPlannedAmount(resolvePlannedAmount(stored, allocation.getAmount()));
                 items.add(item);
             }
@@ -198,17 +221,7 @@ public class BudgetStructureService {
     }
 
     private static String allocationRowKey(String parentRowKey, String label) {
-        String slug = label.trim()
-                .toLowerCase()
-                .replace('ą', 'a').replace('ć', 'c').replace('ę', 'e')
-                .replace('ł', 'l').replace('ń', 'n').replace('ó', 'o')
-                .replace('ś', 's').replace('ź', 'z').replace('ż', 'z')
-                .replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("^-|-$", "");
-        if (slug.isBlank()) {
-            slug = "pozycja";
-        }
-        return parentRowKey + "-line-" + slug;
+        return pl.ngo.budget.util.BudgetLineKeys.of(parentRowKey, label);
     }
 
     private boolean isDeletable(String rowKey,

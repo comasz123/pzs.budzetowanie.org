@@ -8,7 +8,14 @@
     <script th:src="@{/js/money-input.js}"></script>
     <style>
         .structure-add-form.d-flex { display: flex; }
-        .structure-row:hover { background: #f8f9fa; }
+        .structure-row:hover { background: #f1f3f5; }
+        /* Kategorie i podkategorie: większe, pogrubione; wydatki: zwykły, mniejszy, przygaszony tekst. */
+        .structure-row.is-category { background: #f8f9fa; }
+        .structure-row.is-category .structure-name,
+        .structure-row .structure-category-name { font-size: 1.05rem; font-weight: 700; color: #212529; }
+        .structure-row.is-expense { padding-top: .35rem !important; padding-bottom: .35rem !important; }
+        .structure-row.is-expense .structure-expense-name { font-size: .9rem; font-weight: 400; color: #495057; }
+        .structure-row.is-expense .structure-amount { font-size: .85rem; }
     </style>
 </head>
 <body class="bg-light">
@@ -38,7 +45,8 @@
                 <h1 th:unless="${structureNode.categoryTemplateId != null || structureNode.parentRowKey != null}"
                     class="h4 m-0" th:text="${structureNode.name}">Kategoria</h1>
                 <p class="text-muted small mb-0 mt-1">
-                    Wszystkie podpozycje według zagnieżdżenia. Kwota pozycji nadrzędnej jest sumą jej podpozycji.
+                    <strong>Pogrubione</strong> to kategorie i podkategorie, zwykły tekst to wydatki. Wydatek przeniesiesz
+                    do innej kategorii listą po prawej. Kwota kategorii jest sumą jej zawartości.
                     <span th:if="${structureNode.evenMonthlySplit}">Wpisana kwota jest roczna i dzieli się po równo na każdy miesiąc.</span>
                 </p>
             </div>
@@ -51,7 +59,7 @@
             </div>
             <th:block th:if="${structureNode.editable}">
                 <div th:if="${#lists.isEmpty(structureNode.items)}" class="p-3 text-muted small">
-                    Brak podpozycji — dodaj pierwszą poniżej.
+                    Brak zawartości — dodaj pierwszą podkategorię poniżej.
                 </div>
                 <ul th:if="${!#lists.isEmpty(structureNode.items)}" class="list-unstyled mb-0"
                     th:replace="~{fragments/budget-structure-tree :: nodes(${structureNode.items}, 0, ${structureNode.rowKey})}"></ul>
@@ -68,9 +76,9 @@
                 <select class="form-select form-select-sm" id="newParentSelect" name="parentRowKey" style="max-width: 22rem;">
                     <option th:value="${structureNode.rowKey}" th:text="${structureNode.name}">Kategoria</option>
                 </select>
-                <input class="form-control form-control-sm" name="name" placeholder="Nowa podpozycja"
+                <input class="form-control form-control-sm" name="name" placeholder="Nowa podkategoria"
                        style="max-width: 18rem;" required/>
-                <button type="submit" class="btn btn-sm btn-primary">Dodaj podpozycję</button>
+                <button type="submit" class="btn btn-sm btn-primary">Dodaj podkategorię</button>
             </form>
         </div>
     </div>
@@ -88,7 +96,7 @@
         return window.parseMoney ? window.parseMoney(input.value) : 0;
     }
 
-    /** Kwota pozycji z podpozycjami to suma jej bezpośrednich podpozycji. */
+    /** Kwota kategorii to suma jej bezpośredniej zawartości. */
     function recalcParents() {
         const nodes = [...document.querySelectorAll('.structure-node')].reverse();
         nodes.forEach(node => {
@@ -217,6 +225,26 @@
         input.addEventListener('change', () => {
             saveAmount(input);
             recalcParents();
+        });
+    });
+    document.querySelectorAll('.structure-move').forEach(select => {
+        select.addEventListener('change', async () => {
+            const body = new URLSearchParams();
+            body.append(csrfParameter, csrfToken);
+            body.append('lineKey', select.dataset.lineKey || '');
+            body.append('targetRowKey', select.value);
+            select.disabled = true;
+            const response = await fetch(budgetBase + '/lines/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                body: body.toString()
+            });
+            if (!response.ok) {
+                alert(await response.text());
+                select.disabled = false;
+                return;
+            }
+            window.location.reload();
         });
     });
     document.querySelectorAll('.structure-add-toggle').forEach(button => {

@@ -4,15 +4,23 @@
 <ul th:fragment="nodes(items, depth, rootRowKey)" class="list-unstyled mb-0 structure-tree">
     <li th:each="item : ${items}" class="structure-node" th:attr="data-row-key=${item.rowKey}">
         <div class="structure-row d-flex flex-wrap align-items-center gap-2 py-2 border-bottom"
+             th:classappend="${item.expense} ? 'is-expense' : 'is-category'"
              th:style="|padding-left:${depth * 1.75 + 0.5}rem|">
             <input th:if="${item.renamable}" type="text"
                    class="form-control form-control-sm structure-name flex-grow-1 border-0 bg-transparent"
                    style="min-width: 12rem; width: auto;"
-                   th:classappend="${#lists.isEmpty(item.children)} ? '' : 'fw-semibold'"
                    title="Kliknij, aby zmienić nazwę"
                    th:value="${item.name}" th:attr="data-original=${item.name}, data-parent-row-key=${item.parentRowKey}, data-row-key=${item.rowKey}, data-category-id=${item.categoryTemplateId}"/>
             <span th:unless="${item.renamable}" class="flex-grow-1 px-2"
+                  th:classappend="${item.expense} ? 'structure-expense-name' : 'structure-category-name'"
                   th:text="${item.name}">Pozycja</span>
+            <select th:if="${item.expense}" class="form-select form-select-sm structure-move"
+                    style="width: 22rem; max-width: 100%;" title="Przenieś wydatek do innej kategorii"
+                    th:attr="data-line-key=${item.lineKey}">
+                <option th:each="target : ${structureNode.moveTargets}"
+                        th:value="${target.rowKey}" th:text="${target.name}"
+                        th:selected="${target.rowKey == item.parentRowKey}">Kategoria</option>
+            </select>
             <div class="input-group input-group-sm" style="width: 9.5rem;">
                 <input type="text"
                        inputmode="decimal"
@@ -25,7 +33,7 @@
             </div>
             <button th:if="${item.navigable}" type="button"
                     class="btn btn-outline-secondary btn-sm structure-add-toggle"
-                    title="Dodaj podpozycję">＋</button>
+                    title="Dodaj podkategorię">＋</button>
             <form th:if="${item.deletable && item.categoryTemplateId != null}"
                   class="m-0 structure-delete-form"
                   th:action="@{__${budgetBase}__/categories/{id}/delete(id=${item.categoryTemplateId})}"
@@ -54,7 +62,7 @@
             <input type="hidden" name="parentRowKey" th:value="${item.rowKey}"/>
             <input type="hidden" name="year" th:value="${selectedYear}"/>
             <input type="hidden" name="structureRowKey" th:value="${rootRowKey}"/>
-            <input class="form-control form-control-sm" name="name" placeholder="Nazwa nowej podpozycji"
+            <input class="form-control form-control-sm" name="name" placeholder="Nazwa nowej podkategorii"
                    style="max-width: 18rem;" required/>
             <button type="submit" class="btn btn-sm btn-primary">Dodaj</button>
         </form>

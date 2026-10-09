@@ -47,6 +47,7 @@ public class BudgetSetupService {
     private final PublicationRepository publicationRepository;
     private final TravelBudgetLineRepository travelBudgetLineRepository;
     private final PlannedEventRepository plannedEventRepository;
+    private final pl.ngo.budget.repository.BudgetLineAssignmentRepository budgetLineAssignmentRepository;
 
     public BudgetSetupService(CostAllocationRepository costAllocationRepository,
                               GrantRepository grantRepository,
@@ -55,7 +56,9 @@ public class BudgetSetupService {
                               EmployeeRepository employeeRepository,
                               PublicationRepository publicationRepository,
                               TravelBudgetLineRepository travelBudgetLineRepository,
-                              PlannedEventRepository plannedEventRepository) {
+                              PlannedEventRepository plannedEventRepository,
+                              pl.ngo.budget.repository.BudgetLineAssignmentRepository budgetLineAssignmentRepository) {
+        this.budgetLineAssignmentRepository = budgetLineAssignmentRepository;
         this.costAllocationRepository = costAllocationRepository;
         this.grantRepository = grantRepository;
         this.budgetItemTemplateRepository = budgetItemTemplateRepository;
@@ -323,6 +326,26 @@ public class BudgetSetupService {
                 });
         category.setName(normalized);
         budgetItemTemplateRepository.save(category);
+    }
+
+    /** Przenosi linię wydatku do wskazanego wiersza budżetu; pusty cel przywraca położenie naturalne. */
+    @Transactional
+    public void moveBudgetLine(String lineKey, String targetRowKey) {
+        String line = normalize(lineKey);
+        if (line == null) {
+            throw new IllegalArgumentException("Brak identyfikatora wydatku");
+        }
+        String target = normalize(targetRowKey);
+        if (target == null || line.startsWith(target + "-line-")) {
+            budgetLineAssignmentRepository.findByLineKey(line).ifPresent(budgetLineAssignmentRepository::delete);
+            return;
+        }
+        pl.ngo.budget.entity.coverage.BudgetLineAssignment assignment = budgetLineAssignmentRepository
+                .findByLineKey(line)
+                .orElseGet(pl.ngo.budget.entity.coverage.BudgetLineAssignment::new);
+        assignment.setLineKey(line);
+        assignment.setTargetRowKey(target);
+        budgetLineAssignmentRepository.save(assignment);
     }
 
     @Transactional

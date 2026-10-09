@@ -23,6 +23,10 @@ public class BudgetStructureItemDto {
     private Long categoryTemplateId;
     /** Nazwę można zmienić (kategoria albo podpozycja; nie linie alokacji kosztów). */
     private boolean renamable;
+    /** Linia wydatku (z alokacji kosztów), nie podkategoria. */
+    private boolean expense;
+    /** Klucz naturalny linii wydatku — do przenoszenia między kategoriami. */
+    private String lineKey;
     private BigDecimal plannedAmount;
     /** Podpozycje (całe drzewo) — wypełniane przy {@code getTree}. */
     private List<BudgetStructureItemDto> children = new ArrayList<>();

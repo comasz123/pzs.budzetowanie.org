@@ -24,6 +24,8 @@ public class BudgetStructureNodeDto {
     private String parentRowKey;
     private List<BudgetStructureBreadcrumbDto> breadcrumbs = new ArrayList<>();
     private List<BudgetStructureItemDto> items = new ArrayList<>();
+    /** Kategorie i podkategorie, do których można przenieść wydatek. */
+    private List<BudgetStructureBreadcrumbDto> moveTargets = new ArrayList<>();
 
     @Getter
     @Setter

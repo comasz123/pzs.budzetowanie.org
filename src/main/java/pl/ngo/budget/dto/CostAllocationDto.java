@@ -28,4 +28,6 @@ public class CostAllocationDto {
     private Map<String, BigDecimal> amountByGrant = new LinkedHashMap<>();
     private String amountEditKind;
     private String amountEditIds;
+    /** Klucz naturalny linii wydatku (do przenoszenia między kategoriami). */
+    private String lineKey;
 }

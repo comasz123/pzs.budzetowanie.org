@@ -286,6 +286,18 @@ public class DashboardController {
         }
     }
 
+    @PostMapping({"/dashboard/lines/move", "/realizacja/lines/move"})
+    @ResponseBody
+    public ResponseEntity<String> moveBudgetLine(@RequestParam String lineKey,
+                                                 @RequestParam(required = false) String targetRowKey) {
+        try {
+            budgetSetupService.moveBudgetLine(lineKey, targetRowKey);
+            return ResponseEntity.ok("ok");
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage() != null ? ex.getMessage() : "Nie udało się przenieść wydatku");
+        }
+    }
+
     @PostMapping({"/dashboard/subcategories/rename", "/realizacja/subcategories/rename"})
     @ResponseBody
     public ResponseEntity<String> renameBudgetSubcategory(@RequestParam String parentRowKey,
