@@ -214,6 +214,7 @@ public class DashboardController {
     public String deleteBudgetCategory(@PathVariable Long id,
                                        @RequestParam(required = false) Integer year,
                                        @RequestParam(required = false) Integer month,
+                                       @RequestParam(required = false) String structureRowKey,
                                        RedirectAttributes redirectAttributes) {
         try {
             budgetSetupService.deleteBudgetCategory(id);
@@ -221,7 +222,9 @@ public class DashboardController {
         } catch (Exception ex) {
             redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
         }
-        return redirectToDashboard(year, month, true);
+        return structureRowKey != null && !structureRowKey.isBlank()
+                ? redirectToStructure(year, structureRowKey)
+                : redirectToDashboard(year, month, true);
     }
 
     @PostMapping({"/dashboard/subcategories", "/realizacja/subcategories"})
@@ -229,6 +232,7 @@ public class DashboardController {
                                        @RequestParam String name,
                                        @RequestParam(required = false) Integer year,
                                        @RequestParam(required = false) Integer month,
+                                       @RequestParam(required = false) String structureRowKey,
                                        RedirectAttributes redirectAttributes) {
         try {
             budgetSetupService.addBudgetSubcategory(parentRowKey, name);
@@ -236,7 +240,9 @@ public class DashboardController {
         } catch (Exception ex) {
             redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
         }
-        return redirectToDashboard(year, month, true);
+        return structureRowKey != null && !structureRowKey.isBlank()
+                ? redirectToStructure(year, structureRowKey)
+                : redirectToDashboard(year, month, true);
     }
 
     @PostMapping({"/dashboard/subcategories/delete", "/realizacja/subcategories/delete"})
@@ -244,24 +250,27 @@ public class DashboardController {
                                           @RequestParam String rowKey,
                                           @RequestParam(required = false) Integer year,
                                           @RequestParam(required = false) Integer month,
-                                          RedirectAttributes redirectAttributes) {
+                                          @RequestParam(required = false) String structureRowKey,
+                                       RedirectAttributes redirectAttributes) {
         try {
             budgetSetupService.deleteBudgetSubcategory(parentRowKey, rowKey);
             redirectAttributes.addFlashAttribute("successMessage", "Usunięto podpozycję.");
         } catch (Exception ex) {
             redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
         }
-        return redirectToDashboard(year, month, true);
+        return structureRowKey != null && !structureRowKey.isBlank()
+                ? redirectToStructure(year, structureRowKey)
+                : redirectToDashboard(year, month, true);
     }
 
-    @GetMapping({"/dashboard/structure/node", "/realizacja/structure/node"})
-    public String structureNode(@RequestParam String rowKey,
-                                @RequestParam(required = false) Integer year,
-                                Model model) {
+    @GetMapping({"/dashboard/structure", "/realizacja/structure"})
+    public String structure(@RequestParam String rowKey,
+                            @RequestParam(required = false) Integer year,
+                            Model model) {
         int selectedYear = year != null ? year : LocalDate.now().getYear();
         model.addAttribute("selectedYear", selectedYear);
-        model.addAttribute("structureNode", budgetStructureService.getNode(selectedYear, rowKey));
-        return "fragments/budget-structure-node :: content";
+        model.addAttribute("structureNode", budgetStructureService.getTree(selectedYear, rowKey));
+        return "dashboard-structure";
     }
 
     @PostMapping({"/dashboard/month/amount", "/realizacja/month/amount"})
@@ -323,6 +332,17 @@ public class DashboardController {
         if (detail instanceof pl.ngo.budget.dto.BudgetRowDetailDto rowDetail && rowDetail.getDashboard() != null) {
             budgetMatrixService.applyRealizationExpenditures(rowDetail.getDashboard(), year, month);
         }
+    }
+
+    private String redirectToStructure(Integer year, String rowKey) {
+        int selectedYear = year != null ? year : LocalDate.now().getYear();
+        return "redirect:" + org.springframework.web.util.UriComponentsBuilder
+                .fromPath(BudgetSection.currentBase() + "/structure")
+                .queryParam("year", selectedYear)
+                .queryParam("rowKey", "{rowKey}")
+                .buildAndExpand(rowKey)
+                .encode()
+                .toUriString();
     }
 
     private String redirectToDashboard(Integer year, Integer month, Boolean edit) {

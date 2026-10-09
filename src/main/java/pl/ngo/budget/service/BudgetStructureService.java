@@ -54,6 +54,36 @@ public class BudgetStructureService {
         return node;
     }
 
+    /** Pozycja ze wszystkimi podpozycjami według zagnieżdżenia (strona „Struktura budżetu”). */
+    @Transactional(readOnly = true)
+    public BudgetStructureNodeDto getTree(int fiscalYear, String rowKey) {
+        BudgetStructureNodeDto node = getNode(fiscalYear, rowKey);
+        BudgetDashboardDto dashboard = budgetMatrixService.getBudgetDashboardData(fiscalYear);
+        BudgetDashboardDto.BudgetItemRowDto row = findRowByKey(dashboard.getRows(), rowKey.trim(), new ArrayList<>())
+                .orElseThrow(() -> new IllegalArgumentException("Kategoria nie istnieje: " + rowKey));
+        node.setItems(buildTree(row, dashboard.getCategoryOrderByRowKey(), 0));
+        return node;
+    }
+
+    private List<BudgetStructureItemDto> buildTree(BudgetDashboardDto.BudgetItemRowDto parent,
+                                                   Map<String, BudgetDashboardDto.CategoryOrderInfo> order,
+                                                   int depth) {
+        List<BudgetStructureItemDto> items = buildItems(parent, order);
+        if (depth >= 12 || parent.getChildren() == null) {
+            return items;
+        }
+        for (BudgetStructureItemDto item : items) {
+            if (!item.isNavigable()) {
+                continue;
+            }
+            parent.getChildren().stream()
+                    .filter(child -> item.getRowKey().equals(child.getRowKey()))
+                    .findFirst()
+                    .ifPresent(child -> item.setChildren(buildTree(child, order, depth + 1)));
+        }
+        return items;
+    }
+
     private static boolean isEvenMonthlySplit(String rowKey, List<BudgetDashboardDto.BudgetItemRowDto> ancestors) {
         if (MonthlySplit.isSalaryOrAdminRow(rowKey)) {
             return true;

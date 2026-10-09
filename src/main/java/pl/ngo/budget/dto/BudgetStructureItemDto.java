@@ -6,6 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -20,4 +22,6 @@ public class BudgetStructureItemDto {
     private boolean deletable;
     private Long categoryTemplateId;
     private BigDecimal plannedAmount;
+    /** Podpozycje (całe drzewo) — wypełniane przy {@code getTree}. */
+    private List<BudgetStructureItemDto> children = new ArrayList<>();
 }

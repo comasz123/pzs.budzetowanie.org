@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<ul th:fragment="nodes(items, depth, rootRowKey)" class="list-unstyled mb-0 structure-tree">
+    <li th:each="item : ${items}" class="structure-node" th:attr="data-row-key=${item.rowKey}">
+        <div class="structure-row d-flex flex-wrap align-items-center gap-2 py-2 border-bottom"
+             th:style="|padding-left:${depth * 1.75 + 0.5}rem|">
+            <span th:classappend="${#lists.isEmpty(item.children)} ? '' : 'fw-semibold'"
+                  class="flex-grow-1" th:text="${item.name}">Pozycja</span>
+            <div class="input-group input-group-sm" style="width: 9.5rem;">
+                <input type="text"
+                       inputmode="decimal"
+                       class="form-control text-end structure-amount money-input"
+                       placeholder="0,00"
+                       th:disabled="${!#lists.isEmpty(item.children)}"
+                       th:attr="data-parent-row-key=${item.parentRowKey}, data-row-key=${item.rowKey}"
+                       th:value="${item.plannedAmount != null ? #numbers.formatDecimal(item.plannedAmount, 1, 'WHITESPACE', 2, 'COMMA') : ''}"/>
+                <span class="input-group-text">zł</span>
+            </div>
+            <button th:if="${item.navigable}" type="button"
+                    class="btn btn-outline-secondary btn-sm structure-add-toggle"
+                    title="Dodaj podpozycję">＋</button>
+            <form th:if="${item.deletable && item.categoryTemplateId != null}"
+                  class="m-0 structure-delete-form"
+                  th:action="@{__${budgetBase}__/categories/{id}/delete(id=${item.categoryTemplateId})}"
+                  method="post">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                <input type="hidden" name="year" th:value="${selectedYear}"/>
+                <input type="hidden" name="structureRowKey" th:value="${rootRowKey}"/>
+                <button type="submit" class="btn btn-outline-danger btn-sm" title="Usuń">×</button>
+            </form>
+            <form th:if="${item.deletable && item.categoryTemplateId == null}"
+                  class="m-0 structure-delete-form"
+                  th:action="@{__${budgetBase}__/subcategories/delete}"
+                  method="post">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                <input type="hidden" name="parentRowKey" th:value="${item.parentRowKey}"/>
+                <input type="hidden" name="rowKey" th:value="${item.rowKey}"/>
+                <input type="hidden" name="year" th:value="${selectedYear}"/>
+                <input type="hidden" name="structureRowKey" th:value="${rootRowKey}"/>
+                <button type="submit" class="btn btn-outline-danger btn-sm" title="Usuń">×</button>
+            </form>
+        </div>
+        <form th:if="${item.navigable}" class="structure-add-form d-none align-items-center gap-2 py-2 border-bottom bg-light"
+              th:style="|padding-left:${(depth + 1) * 1.75 + 0.5}rem|"
+              th:action="@{__${budgetBase}__/subcategories}" method="post">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+            <input type="hidden" name="parentRowKey" th:value="${item.rowKey}"/>
+            <input type="hidden" name="year" th:value="${selectedYear}"/>
+            <input type="hidden" name="structureRowKey" th:value="${rootRowKey}"/>
+            <input class="form-control form-control-sm" name="name" placeholder="Nazwa nowej podpozycji"
+                   style="max-width: 18rem;" required/>
+            <button type="submit" class="btn btn-sm btn-primary">Dodaj</button>
+        </form>
+        <ul th:if="${!#lists.isEmpty(item.children)}" class="list-unstyled mb-0"
+            th:replace="~{fragments/budget-structure-tree :: nodes(${item.children}, ${depth + 1}, ${rootRowKey})}"></ul>
+    </li>
+</ul>
+</body>
+</html>

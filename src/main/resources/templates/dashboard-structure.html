@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <th:block th:replace="~{fragments/favicon :: favicon}"></th:block>
+    <title th:text="${structureNode.name + ' — struktura budżetu'}">Struktura budżetu</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script th:src="@{/js/money-input.js}"></script>
+    <style>
+        .structure-add-form.d-flex { display: flex; }
+        .structure-row:hover { background: #f8f9fa; }
+    </style>
+</head>
+<body class="bg-light">
+<div class="container-fluid px-4 py-3" style="max-width: 60rem;">
+    <div th:replace="~{fragments/nav :: budget-nav('dashboard')}"></div>
+
+    <nav class="mb-3" aria-label="breadcrumb">
+        <a th:href="@{__${budgetBase}__(year=${selectedYear}, edit=true)}">Budżet</a>
+        <th:block th:each="crumb, stat : ${structureNode.breadcrumbs}">
+            <span class="text-muted"> / </span>
+            <a th:if="${!stat.last}" class="fw-semibold text-decoration-none"
+               th:href="@{__${budgetBase}__/structure(year=${selectedYear}, rowKey=${crumb.rowKey})}"
+               th:text="${crumb.name}">Kategoria</a>
+            <span th:if="${stat.last}" class="fw-semibold" th:text="${crumb.name}">Kategoria</span>
+        </th:block>
+    </nav>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <h1 class="h4 m-0" th:text="${structureNode.name}">Kategoria</h1>
+                <p class="text-muted small mb-0 mt-1">
+                    Wszystkie podpozycje według zagnieżdżenia. Kwota pozycji nadrzędnej jest sumą jej podpozycji.
+                    <span th:if="${structureNode.evenMonthlySplit}">Wpisana kwota jest roczna i dzieli się po równo na każdy miesiąc.</span>
+                </p>
+            </div>
+            <a class="btn btn-primary btn-sm" th:href="@{__${budgetBase}__(year=${selectedYear}, edit=true)}">Gotowe</a>
+        </div>
+
+        <div class="card-body p-0">
+            <div th:if="${!structureNode.editable}" class="alert alert-info m-3 py-2 small">
+                Pracownicy i wynagrodzenia edytujesz w zakładce <strong>Pracownicy</strong>.
+            </div>
+            <th:block th:if="${structureNode.editable}">
+                <div th:if="${#lists.isEmpty(structureNode.items)}" class="p-3 text-muted small">
+                    Brak podpozycji — dodaj pierwszą poniżej.
+                </div>
+                <ul th:if="${!#lists.isEmpty(structureNode.items)}" class="list-unstyled mb-0"
+                    th:replace="~{fragments/budget-structure-tree :: nodes(${structureNode.items}, 0, ${structureNode.rowKey})}"></ul>
+            </th:block>
+        </div>
+
+        <div th:if="${structureNode.editable}" class="card-footer bg-white">
+            <form class="d-flex flex-wrap align-items-center gap-2 m-0"
+                  th:action="@{__${budgetBase}__/subcategories}" method="post">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                <input type="hidden" name="parentRowKey" th:value="${structureNode.rowKey}"/>
+                <input type="hidden" name="year" th:value="${selectedYear}"/>
+                <input type="hidden" name="structureRowKey" th:value="${structureNode.rowKey}"/>
+                <input class="form-control form-control-sm" name="name" placeholder="Nowa podpozycja"
+                       style="max-width: 18rem;" required/>
+                <button type="submit" class="btn btn-sm btn-primary">Dodaj podpozycję</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div th:replace="~{fragments/footer :: budget-footer}"></div>
+
+<script th:inline="javascript">
+    const budgetBase = /*[[${budgetBase}]]*/ '/dashboard';
+    const budgetYear = /*[[${selectedYear}]]*/ 0;
+    const csrfToken = /*[[${_csrf != null ? _csrf.token : ''}]]*/ '';
+    const csrfParameter = /*[[${_csrf != null ? _csrf.parameterName : '_csrf'}]]*/ '_csrf';
+
+    function amountOf(input) {
+        return window.parseMoney ? window.parseMoney(input.value) : 0;
+    }
+
+    /** Kwota pozycji z podpozycjami to suma jej bezpośrednich podpozycji. */
+    function recalcParents() {
+        const nodes = [...document.querySelectorAll('.structure-node')].reverse();
+        nodes.forEach(node => {
+            const children = node.querySelectorAll(':scope > ul > .structure-node');
+            if (!children.length) {
+                return;
+            }
+            let sum = 0;
+            children.forEach(child => {
+                const input = child.querySelector(':scope > .structure-row .structure-amount');
+                sum += input ? amountOf(input) : 0;
+            });
+            const own = node.querySelector(':scope > .structure-row .structure-amount');
+            if (own) {
+                own.value = window.formatMoney ? window.formatMoney(sum) : String(sum);
+            }
+        });
+    }
+
+    async function saveAmount(input) {
+        const body = new URLSearchParams();
+        body.append(csrfParameter, csrfToken);
+        body.append('parentRowKey', input.dataset.parentRowKey || '');
+        body.append('rowKey', input.dataset.rowKey || '');
+        body.append('amount', input.value || '');
+        body.append('year', String(budgetYear));
+        input.classList.remove('is-invalid');
+        try {
+            const response = await fetch(budgetBase + '/structure/amount', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                body: body.toString(),
+                redirect: 'manual'
+            });
+            if (response.status >= 400) {
+                input.classList.add('is-invalid');
+            }
+        } catch (e) {
+            input.classList.add('is-invalid');
+        }
+    }
+
+    document.querySelectorAll('.structure-amount:not([disabled])').forEach(input => {
+        input.addEventListener('change', () => {
+            saveAmount(input);
+            recalcParents();
+        });
+    });
+    document.querySelectorAll('.structure-add-toggle').forEach(button => {
+        button.addEventListener('click', () => {
+            const form = button.closest('.structure-node').querySelector(':scope > .structure-add-form');
+            form.classList.toggle('d-none');
+            form.classList.toggle('d-flex');
+            if (!form.classList.contains('d-none')) {
+                form.querySelector('input[name="name"]').focus();
+            }
+        });
+    });
+    document.querySelectorAll('.structure-delete-form').forEach(form => {
+        form.addEventListener('submit', event => {
+            if (!confirm('Usunąć tę pozycję?')) {
+                event.preventDefault();
+            }
+        });
+    });
+</script>
+</body>
+</html>

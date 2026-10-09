@@ -237,28 +237,6 @@
             text-align: left;
             padding: 0;
         }
-        .structure-drag-handle {
-            display: inline-grid;
-            grid-template-columns: repeat(2, 3px);
-            grid-template-rows: repeat(3, 3px);
-            gap: 2px;
-            width: 18px;
-            height: 18px;
-            padding: 3px;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
-            background-color: #fff;
-            cursor: grab;
-            flex-shrink: 0;
-        }
-        .structure-drag-handle span {
-            width: 3px;
-            height: 3px;
-            border-radius: 50%;
-            background-color: #868e96;
-            display: block;
-        }
-        #budgetStructureModal .modal-dialog { max-width: 640px; }
         .budget-fs-context,
         .budget-fs-months { display: none; }
         #budget-sheet .alert {
@@ -501,11 +479,10 @@
                                       title="Przeciągnij, aby zmienić kolejność">
                                     <span></span><span></span><span></span><span></span><span></span><span></span>
                                 </span>
-                                <button th:if="${editMode && !monthView && row.depth == 0 && row.rowKey != null}"
-                                        type="button"
-                                        class="btn btn-link budget-category-open budget-edit-only p-0"
-                                        th:attr="data-row-key=${row.rowKey}"
-                                        th:text="${row.itemName}">Kategoria</button>
+                                <a th:if="${editMode && !monthView && row.depth == 0 && row.rowKey != null}"
+                                   class="btn btn-link budget-category-open budget-edit-only p-0"
+                                   th:href="@{__${budgetBase}__/structure(year=${selectedYear}, rowKey=${row.rowKey})}"
+                                   th:text="${row.itemName}">Kategoria</a>
                                 <a th:if="${row.linkable && (!editMode || monthView)}"
                                    class="row-link"
                                    th:href="${monthView} ? @{__${budgetBase}__/row(year=${selectedYear}, month=${selectedMonth}, rowKey=${row.rowKey})} : @{__${budgetBase}__/row(year=${selectedYear}, rowKey=${row.rowKey})}"
@@ -575,23 +552,6 @@
 
 <div th:replace="~{fragments/footer :: budget-footer}"></div>
 
-<div class="modal fade" id="budgetStructureModal" tabindex="-1" aria-hidden="true" th:if="${editMode and !monthView}">
-    <div class="modal-dialog modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h5 class="modal-title">Struktura budżetu</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
-            </div>
-            <div class="modal-body" id="budgetStructureModalBody">
-                <div class="text-muted small">Wybierz kategorię z listy…</div>
-            </div>
-            <div class="modal-footer py-2 d-none" id="budgetStructureModalFooter">
-                <button type="button" class="btn btn-primary btn-sm" id="budgetStructureSaveBtn">Zapisz</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <input type="hidden" id="budget-selected-month" th:if="${monthView}" th:value="${selectedMonth}"/>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script th:inline="javascript">
@@ -601,25 +561,6 @@
     const budgetDashboardYear = /*[[${selectedYear}]]*/ 0;
     const budgetCsrfToken = /*[[${_csrf != null ? _csrf.token : ''}]]*/ '';
     const budgetCsrfParameter = /*[[${_csrf != null ? _csrf.parameterName : '_csrf'}]]*/ '_csrf';
-
-    let budgetStructureModal = null;
-
-    function hideStructureSaveButton() {
-        document.getElementById('budgetStructureModalFooter')?.classList.add('d-none');
-    }
-
-    function showStructureSaveButton() {
-        document.getElementById('budgetStructureModalFooter')?.classList.remove('d-none');
-    }
-
-    function closeStructureModalAndRefresh() {
-        hideStructureSaveButton();
-        budgetStructureModal?.hide();
-        const url = new URL(window.location.href);
-        url.searchParams.set('edit', 'true');
-        rememberBudgetFullscreen();
-        window.location.href = url.toString();
-    }
 
     function toggleGrantYearSplit(button) {
         const table = button.closest('table');
@@ -857,117 +798,6 @@
         window.location.href = budgetBase + '?' + params.toString();
     });
     syncFullscreenButton();
-
-    async function loadStructureNode(rowKey) {
-        const params = new URLSearchParams({ year: String(budgetDashboardYear), rowKey });
-        const response = await fetch(budgetBase + '/structure/node?' + params.toString());
-        if (!response.ok) {
-            return;
-        }
-        const html = await response.text();
-        const body = document.getElementById('budgetStructureModalBody');
-        if (body) {
-            body.innerHTML = html;
-            window.formatMoneyInputs?.(body);
-            bindStructurePanelEvents(body);
-        }
-    }
-
-    function openStructureModal(rowKey) {
-        if (!budgetStructureModal) {
-            const modalEl = document.getElementById('budgetStructureModal');
-            if (modalEl) {
-                budgetStructureModal = new bootstrap.Modal(modalEl);
-            }
-            document.getElementById('budgetStructureSaveBtn')?.addEventListener('click', closeStructureModalAndRefresh);
-        }
-        hideStructureSaveButton();
-        loadStructureNode(rowKey).then(() => budgetStructureModal?.show());
-    }
-
-    async function submitStructureAddForm(form) {
-        await fetch(form.action, {
-            method: 'POST',
-            body: new FormData(form),
-            redirect: 'manual'
-        });
-        const panel = form.closest('#budget-structure-panel');
-        const rowKey = panel?.dataset.rowKey;
-        const nameInput = form.querySelector('input[name="name"]');
-        if (nameInput) {
-            nameInput.value = '';
-        }
-        if (rowKey) {
-            await loadStructureNode(rowKey);
-        }
-        showStructureSaveButton();
-    }
-
-    async function submitStructureDeleteForm(form) {
-        await fetch(form.action, {
-            method: 'POST',
-            body: new FormData(form),
-            redirect: 'manual'
-        });
-        const panel = form.closest('#budget-structure-panel');
-        const rowKey = panel?.dataset.rowKey;
-        if (rowKey) {
-            await loadStructureNode(rowKey);
-        }
-        showStructureSaveButton();
-    }
-
-    async function saveStructureAmount(input) {
-        const body = new URLSearchParams();
-        body.append(budgetCsrfParameter, budgetCsrfToken);
-        body.append('parentRowKey', input.dataset.parentRowKey || '');
-        body.append('rowKey', input.dataset.rowKey || '');
-        body.append('amount', input.value || '');
-        body.append('year', String(budgetDashboardYear));
-        await fetch(budgetBase + '/structure/amount', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-            body: body.toString()
-        });
-    }
-
-    function bindStructurePanelEvents(root) {
-        root.querySelectorAll('.budget-structure-open').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const key = btn.dataset.rowKey;
-                if (key) {
-                    loadStructureNode(key);
-                }
-            });
-        });
-        root.querySelector('.budget-structure-close-root')?.addEventListener('click', () => {
-            budgetStructureModal?.hide();
-        });
-        root.querySelectorAll('.budget-structure-amount').forEach(input => {
-            input.addEventListener('change', () => saveStructureAmount(input));
-        });
-        root.querySelectorAll('.budget-structure-add-form').forEach(form => {
-            form.addEventListener('submit', event => {
-                event.preventDefault();
-                submitStructureAddForm(form);
-            });
-        });
-        root.querySelectorAll('.budget-structure-delete-form').forEach(form => {
-            form.addEventListener('submit', event => {
-                event.preventDefault();
-                if (!confirm('Usunąć tę pozycję?')) {
-                    return;
-                }
-                submitStructureDeleteForm(form);
-            });
-        });
-    }
-
-    if (budgetEditMode) {
-        document.querySelectorAll('.budget-category-open').forEach(btn => {
-            btn.addEventListener('click', () => openStructureModal(btn.dataset.rowKey));
-        });
-    }
 
     document.querySelectorAll('.budget-month-amount').forEach(input => {
         input.addEventListener('change', async () => {
