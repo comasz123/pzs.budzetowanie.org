@@ -34,4 +34,6 @@ public class CostAllocationDto {
     private BigDecimal monthsTotal;
     /** Planowany koszt linii (stała kwota planu rocznego). */
     private BigDecimal plannedTotal;
+    /** Odwołania pokrycia z budżetów grantów, pod którymi ta linia przyjmuje pokrycie (np. COST_ALLOCATION|id). */
+    private java.util.List<String> coverageRefs = new java.util.ArrayList<>();
 }

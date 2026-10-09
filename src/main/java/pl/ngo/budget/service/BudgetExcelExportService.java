@@ -57,10 +57,7 @@ public class BudgetExcelExportService {
             for (int fiscalYear : fiscalYears) {
                 BudgetDashboardDto annual = budgetMatrixService.getBudgetDashboardDataForYear(fiscalYear);
                 budgetStructureService.applyPlannedCosts(annual);
-                List<BudgetDashboardDto> months = new ArrayList<>();
-                for (int month = 1; month <= 12; month++) {
-                    months.add(budgetMatrixService.getBudgetDashboardDataForMonth(fiscalYear, month));
-                }
+                List<BudgetDashboardDto> months = budgetMatrixService.getBudgetDashboardDataForMonths(fiscalYear);
                 writeAnnualSheet(workbook, styles, fiscalYear, annual,
                         "Budżet " + fiscalYear, COST_HEADER, TOTAL_LABEL, true);
                 writeMonthlySheet(workbook, styles, fiscalYear, annual, months);

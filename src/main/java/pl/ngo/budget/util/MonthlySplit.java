@@ -58,6 +58,39 @@ public final class MonthlySplit {
         return result;
     }
 
+    /**
+     * {@code total} rozdzielone proporcjonalnie do wag (np. kosztu w miesiącach); ostatnia dodatnia waga
+     * dostaje resztę z zaokrągleń, więc części sumują się do całości. Bez dodatnich wag — same zera.
+     */
+    public static List<BigDecimal> proportional(BigDecimal totalAmount, List<BigDecimal> weights) {
+        BigDecimal total = scale(totalAmount);
+        BigDecimal weightSum = BigDecimal.ZERO;
+        int last = -1;
+        for (int i = 0; i < weights.size(); i++) {
+            BigDecimal weight = weights.get(i);
+            if (weight != null && weight.signum() > 0) {
+                weightSum = weightSum.add(weight);
+                last = i;
+            }
+        }
+        List<BigDecimal> result = new ArrayList<>(weights.size());
+        BigDecimal assigned = BigDecimal.ZERO;
+        for (int i = 0; i < weights.size(); i++) {
+            BigDecimal weight = weights.get(i);
+            BigDecimal part;
+            if (weight == null || weight.signum() <= 0) {
+                part = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            } else if (i == last) {
+                part = total.subtract(assigned).setScale(2, RoundingMode.HALF_UP);
+            } else {
+                part = total.multiply(weight).divide(weightSum, 2, RoundingMode.HALF_UP);
+                assigned = assigned.add(part);
+            }
+            result.add(part);
+        }
+        return result;
+    }
+
     /** Kwota grantu / liczba miesięcy, w których grant jest aktywny. */
     public static BigDecimal amountPerActiveMonth(BigDecimal total, int activeMonths) {
         if (activeMonths <= 0) {

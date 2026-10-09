@@ -81,7 +81,8 @@ public class BudgetStructureService {
     /**
      * Wypełnia kolumnę „Planowany Koszt” widoku rocznego kwotami ze struktury budżetu:
      * pozycja bez zawartości ma kwotę wpisaną (albo roczną z przygotowania budżetu), kategoria — sumę zawartości.
-     * Obok liczy „Pokrycie w miesiącach”: planowany koszt minus suma miesięcy.
+     * Obok liczy „Pokrycie w miesiącach”: planowany koszt minus suma miesięcy, a Bilans: pokrycie z grantów
+     * minus planowany koszt (pozycja w pełni pokryta grantem ma bilans 0).
      */
     @Transactional(readOnly = true)
     public void applyPlannedCosts(BudgetDashboardDto dashboard) {
@@ -107,11 +108,25 @@ public class BudgetStructureService {
                 BigDecimal months = display.getMonthsCost() != null ? display.getMonthsCost()
                         : (display.getTotalCost() != null ? display.getTotalCost() : BigDecimal.ZERO);
                 display.setMonthsGap((planned != null ? planned : BigDecimal.ZERO).subtract(months));
+                if (planned != null) {
+                    display.setBalance(planned.subtract(sumValues(display.getCoverageByGrant())));
+                }
             }
         }
         dashboard.setTotalPlannedCost(total);
+        dashboard.setBalance(total.subtract(dashboard.getTotalGrantCoverage() != null
+                ? dashboard.getTotalGrantCoverage() : BigDecimal.ZERO));
         dashboard.setTotalMonthsGap(total.subtract(
                 dashboard.getTotalCost() != null ? dashboard.getTotalCost() : BigDecimal.ZERO));
+    }
+
+    private static BigDecimal sumValues(Map<String, BigDecimal> byGrant) {
+        if (byGrant == null) {
+            return BigDecimal.ZERO;
+        }
+        return byGrant.values().stream()
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private static BigDecimal sumPlanned(List<BudgetStructureItemDto> items, Map<String, BigDecimal> plannedByKey) {

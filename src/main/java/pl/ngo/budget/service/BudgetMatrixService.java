@@ -51,6 +51,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -284,7 +285,10 @@ public class BudgetMatrixService {
         options.add(GrantBudgetChoiceDto.of(value, label));
     }
 
-    /** Roczne kwoty są sumą dwunastu widoków miesiąca, nie osobnym wyliczeniem. */
+    /**
+     * Roczne koszty są sumą dwunastu widoków miesiąca. Pokrycie z grantów jest roczne: miesiące dzielą je
+     * według kosztu pozycji, więc ich suma i tak równa się kwocie rocznej.
+     */
     private BudgetDashboardDto yearFromMonths(int fiscalYear) {
         BudgetDashboardDto year = buildDashboard(fiscalYear, null);
         List<BudgetDashboardDto> months = new ArrayList<>();
@@ -299,15 +303,9 @@ public class BudgetMatrixService {
         Map<String, BudgetItemRowDto> yearRows = new LinkedHashMap<>();
         indexRows(year.getRows(), yearRows);
         Map<String, BigDecimal> costByKey = new LinkedHashMap<>();
-        Map<String, Map<String, BigDecimal>> coverageByKey = new LinkedHashMap<>();
         BigDecimal totalCost = BigDecimal.ZERO;
-        BigDecimal totalCoverage = BigDecimal.ZERO;
-        Map<String, BigDecimal> totalByGrant = emptyGrantMap(year.getGrantNames());
         for (BudgetDashboardDto month : months) {
             totalCost = totalCost.add(month.getTotalCost() != null ? month.getTotalCost() : BigDecimal.ZERO);
-            totalCoverage = totalCoverage.add(month.getTotalGrantCoverage() != null
-                    ? month.getTotalGrantCoverage() : BigDecimal.ZERO);
-            mergeGrantAmounts(totalByGrant, month.getTotalCoverageByGrant());
             Map<String, BudgetItemRowDto> monthRows = new LinkedHashMap<>();
             indexRows(month.getRows(), monthRows);
             for (Map.Entry<String, BudgetItemRowDto> entry : monthRows.entrySet()) {
@@ -315,16 +313,13 @@ public class BudgetMatrixService {
                 costByKey.merge(entry.getKey(),
                         row.getTotalCost() != null ? row.getTotalCost() : BigDecimal.ZERO,
                         BigDecimal::add);
-                Map<String, BigDecimal> coverage = coverageByKey.computeIfAbsent(
-                        entry.getKey(), ignored -> emptyGrantMap(year.getGrantNames()));
-                mergeGrantAmounts(coverage, row.getCoverageByGrant());
             }
         }
         for (Map.Entry<String, BudgetItemRowDto> entry : yearRows.entrySet()) {
             BudgetItemRowDto row = entry.getValue();
             BigDecimal cost = costByKey.getOrDefault(entry.getKey(), BigDecimal.ZERO);
-            Map<String, BigDecimal> coverage = coverageByKey.getOrDefault(
-                    entry.getKey(), emptyGrantMap(year.getGrantNames()));
+            Map<String, BigDecimal> coverage = row.getCoverageByGrant() != null
+                    ? row.getCoverageByGrant() : emptyGrantMap(year.getGrantNames());
             row.setTotalCost(cost);
             row.setCoverageByGrant(coverage);
             row.setOverallCoverage(sumGrantMap(coverage));
@@ -332,9 +327,9 @@ public class BudgetMatrixService {
         }
         rebalanceSalaryRemainders(year.getRows());
         applyMonthsTotalsToLines(yearRows, months);
+        BigDecimal totalCoverage = sumGrantMap(year.getTotalCoverageByGrant());
         year.setTotalCost(totalCost);
         year.setTotalGrantCoverage(totalCoverage);
-        year.setTotalCoverageByGrant(totalByGrant);
         year.setBalance(totalCost.subtract(totalCoverage));
         year.setDisplayRows(flattenRowsForDisplay(year.getRows(), year.getCategoryOrderByRowKey()));
     }
@@ -412,12 +407,23 @@ public class BudgetMatrixService {
         remainder.setBalance(left.subtract(coverage));
     }
 
+    /** Wszystkie dwanaście miesięcy roku (koszt pozycji w miesiącach liczony raz dla całego roku). */
+    @Transactional(readOnly = true)
+    public List<BudgetDashboardDto> getBudgetDashboardDataForMonths(int fiscalYear) {
+        Map<String, BigDecimal[]> costs = costByRefMonth(fiscalYear);
+        List<BudgetDashboardDto> months = new ArrayList<>();
+        for (int month = 1; month <= 12; month++) {
+            months.add(buildDashboard(fiscalYear, month, costs));
+        }
+        return months;
+    }
+
     @Transactional(readOnly = true)
     public BudgetDashboardDto getBudgetDashboardDataForMonth(int fiscalYear, int month) {
         if (month < 1 || month > 12) {
             throw new IllegalArgumentException("Miesiąc poza zakresem 1–12: " + month);
         }
-        return buildDashboard(fiscalYear, month);
+        return buildDashboard(fiscalYear, month, costByRefMonth(fiscalYear));
     }
 
     /** Pulpit: wpływy z transz i suma Planowany koszt, miesiąc po miesiącu. */
@@ -781,6 +787,14 @@ public class BudgetMatrixService {
     }
 
     private BudgetDashboardDto buildDashboard(int fiscalYear, Integer month) {
+        return buildDashboard(fiscalYear, month, null);
+    }
+
+    /**
+     * @param costByRefMonth koszt pozycji w miesiącach (klucz jak źródło pokrycia, np. COST_ALLOCATION|id);
+     *                       pokrycie grantu w miesiącu idzie tam, gdzie pozycja ma koszt. Null = bez tej wiedzy.
+     */
+    private BudgetDashboardDto buildDashboard(int fiscalYear, Integer month, Map<String, BigDecimal[]> costByRefMonth) {
         boolean useMonthlyPlan = month != null
                 && costAllocationRepository.existsMonthlyPlanForFiscalYear(fiscalYear);
         BigDecimal amountScale = month != null && !useMonthlyPlan
@@ -831,6 +845,11 @@ public class BudgetMatrixService {
         List<CostAllocation> costAllocations = month != null && useMonthlyPlan
                 ? costAllocationRepository.findPlanAllocationsByFiscalYearAndPlanMonth(fiscalYear, month)
                 : costAllocationRepository.findPlanAllocationsByFiscalYear(fiscalYear);
+        Map<Long, Long> annualIdByMonthId = useMonthlyPlan
+                ? annualIdsOfMonthLines(fiscalYear, costAllocations)
+                : Map.of();
+        Map<String, Map<String, BigDecimal>> planCoverage =
+                planCoverageBySource(grants, fiscalYear, month, costByRefMonth);
         Map<Long, List<CostAllocation>> allocationsByEmployee = costAllocations.stream()
                 .filter(a -> a.getEmployee() != null)
                 .collect(Collectors.groupingBy(a -> a.getEmployee().getId(), LinkedHashMap::new, Collectors.toList()));
@@ -877,7 +896,9 @@ public class BudgetMatrixService {
                     amountScale,
                     grants,
                     fiscalYear,
-                    month);
+                    month,
+                    planCoverage,
+                    annualIdByMonthId);
             if (categoryRow.isPresent()) {
                 BudgetItemRowDto row = categoryRow.get();
                 rows.add(row);
@@ -1222,7 +1243,8 @@ public class BudgetMatrixService {
      */
     private Map<String, Map<String, BigDecimal>> planCoverageBySource(List<Grant> grants,
                                                                        int fiscalYear,
-                                                                       Integer month) {
+                                                                       Integer month,
+                                                                       Map<String, BigDecimal[]> costByRefMonth) {
         Map<String, Map<String, BigDecimal>> bySource = new LinkedHashMap<>();
         for (Grant grant : grants) {
             if (!grant.isActive() || grant.getName() == null || grant.getBudgetItems() == null) {
@@ -1236,6 +1258,10 @@ public class BudgetMatrixService {
                     if (salaryDestinationCode(item) != null && employeeIdOf(coverage) != null) {
                         continue;
                     }
+                    String sourceRef = coverageSourceRef(coverage);
+                    if (sourceRef == null) {
+                        continue;
+                    }
                     BigDecimal amount;
                     if (coverage.hasMonthlyAmounts()) {
                         amount = coverage.monthlyAmount(fiscalYear, month);
@@ -1244,13 +1270,14 @@ public class BudgetMatrixService {
                         if (covered == null || covered.signum() <= 0) {
                             continue;
                         }
-                        amount = coverageAmountForPeriod(grant, covered, fiscalYear, month);
+                        amount = month != null && costByRefMonth != null
+                                ? coverageAmountByCost(grant, covered, fiscalYear, month, costByRefMonth.get(sourceRef))
+                                : null;
+                        if (amount == null) {
+                            amount = coverageAmountForPeriod(grant, covered, fiscalYear, month);
+                        }
                     }
                     if (amount == null || amount.signum() <= 0) {
-                        continue;
-                    }
-                    String sourceRef = coverageSourceRef(coverage);
-                    if (sourceRef == null) {
                         continue;
                     }
                     bySource.computeIfAbsent(sourceRef, ignored -> new LinkedHashMap<>())
@@ -1259,6 +1286,100 @@ public class BudgetMatrixService {
             }
         }
         return bySource;
+    }
+
+    /**
+     * Pokrycie pozycji w miesiącu: roczna kwota pokrycia dzielona proporcjonalnie do kosztu pozycji w miesiącach
+     * aktywności grantu. Null, gdy pozycja nie ma w tych miesiącach kosztu (wtedy podział po miesiącach grantu).
+     */
+    private static BigDecimal coverageAmountByCost(Grant grant,
+                                                   BigDecimal covered,
+                                                   int fiscalYear,
+                                                   int month,
+                                                   BigDecimal[] costByMonth) {
+        if (costByMonth == null) {
+            return null;
+        }
+        boolean undated = grant.getStartDate() == null && grant.getEndDate() == null;
+        Set<Integer> grantMonths = GrantPeriodCoverage.activeMonths(grant.getStartDate(), grant.getEndDate()).stream()
+                .filter(yearMonth -> yearMonth.getYear() == fiscalYear)
+                .map(YearMonth::getMonthValue)
+                .collect(Collectors.toSet());
+        List<BigDecimal> weights = new ArrayList<>(12);
+        boolean anyCost = false;
+        for (int m = 1; m <= 12; m++) {
+            BigDecimal cost = costByMonth[m - 1];
+            boolean counted = (undated || grantMonths.contains(m)) && cost != null && cost.signum() > 0;
+            weights.add(counted ? cost : BigDecimal.ZERO);
+            anyCost |= counted;
+        }
+        if (!anyCost) {
+            return null;
+        }
+        return MonthlySplit.proportional(covered, weights).get(month - 1);
+    }
+
+    /** Koszt każdej pozycji w dwunastu miesiącach, pod kluczami źródeł pokrycia (jak w budżecie grantu). */
+    private Map<String, BigDecimal[]> costByRefMonth(int fiscalYear) {
+        Map<String, BigDecimal[]> costs = new HashMap<>();
+        for (int month = 1; month <= 12; month++) {
+            collectRefCosts(buildDashboard(fiscalYear, month, null).getRows(), month, costs);
+        }
+        return costs;
+    }
+
+    private static void collectRefCosts(List<BudgetItemRowDto> rows, int month, Map<String, BigDecimal[]> costs) {
+        if (rows == null) {
+            return;
+        }
+        for (BudgetItemRowDto row : rows) {
+            for (String ref : sourceRefsForRow(row)) {
+                addRefCost(costs, ref, month, row.getTotalCost());
+            }
+            if (row.getAllocations() != null) {
+                for (CostAllocationDto allocation : row.getAllocations()) {
+                    for (String ref : allocation.getCoverageRefs()) {
+                        addRefCost(costs, ref, month, allocation.getAmount());
+                    }
+                }
+            }
+            collectRefCosts(row.getChildren(), month, costs);
+        }
+    }
+
+    private static void addRefCost(Map<String, BigDecimal[]> costs, String ref, int month, BigDecimal amount) {
+        if (amount == null || amount.signum() == 0) {
+            return;
+        }
+        BigDecimal[] byMonth = costs.computeIfAbsent(ref, ignored -> new BigDecimal[12]);
+        byMonth[month - 1] = byMonth[month - 1] == null ? amount : byMonth[month - 1].add(amount);
+    }
+
+    /**
+     * Linie miesięczne planu → id rocznej linii tej samej pozycji. Pokrycie z budżetu grantu wskazuje roczną linię,
+     * a w widoku miesiąca linia ma identyfikatory swoich wierszy miesięcznych.
+     */
+    private Map<Long, Long> annualIdsOfMonthLines(int fiscalYear, List<CostAllocation> monthLines) {
+        Map<String, Long> annualByLine = new HashMap<>();
+        for (CostAllocation annual : costAllocationRepository.findAnnualPlanAllocationsByFiscalYear(fiscalYear)) {
+            annualByLine.putIfAbsent(planLineIdentity(annual), annual.getId());
+        }
+        Map<Long, Long> result = new HashMap<>();
+        for (CostAllocation line : monthLines) {
+            Long annualId = annualByLine.get(planLineIdentity(line));
+            if (annualId != null) {
+                result.put(line.getId(), annualId);
+            }
+        }
+        return result;
+    }
+
+    private static String planLineIdentity(CostAllocation allocation) {
+        return (allocation.getCategory() != null ? allocation.getCategory().getId() : "")
+                + "|" + Objects.toString(allocation.getLabel(), "")
+                + "|" + (allocation.getEmployee() != null ? allocation.getEmployee().getId() : "")
+                + "|" + Objects.toString(allocation.getAdminGroup(), "")
+                + "|" + (allocation.getProject() != null ? allocation.getProject().getId() : "");
     }
 
     private static BigDecimal coverageAmountForPeriod(Grant grant,
@@ -1298,10 +1419,11 @@ public class BudgetMatrixService {
 
     private void applyPlanCoverage(BudgetItemRowDto row,
                                     Map<String, Map<String, BigDecimal>> bySource,
-                                    List<String> grantNames) {
+                                    List<String> grantNames,
+                                    Map<Long, Long> annualIdByMonthId) {
         if (row.getChildren() != null) {
             for (BudgetItemRowDto child : row.getChildren()) {
-                applyPlanCoverage(child, bySource, grantNames);
+                applyPlanCoverage(child, bySource, grantNames, annualIdByMonthId);
             }
         }
         if (row.getCoverageByGrant() == null) {
@@ -1309,8 +1431,8 @@ public class BudgetMatrixService {
         }
         if (row.getAllocations() != null) {
             for (CostAllocationDto allocation : row.getAllocations()) {
-                Map<String, BigDecimal> extra = coverageForRefs(
-                        sourceRefsForAllocation(allocation, row.getRowKey()), bySource);
+                allocation.setCoverageRefs(sourceRefsForAllocation(allocation, row.getRowKey(), annualIdByMonthId));
+                Map<String, BigDecimal> extra = coverageForRefs(allocation.getCoverageRefs(), bySource);
                 if (extra.isEmpty()) {
                     continue;
                 }
@@ -1740,12 +1862,26 @@ public class BudgetMatrixService {
         return refs;
     }
 
-    private static List<String> sourceRefsForAllocation(CostAllocationDto allocation, String parentRowKey) {
+    private static List<String> sourceRefsForAllocation(CostAllocationDto allocation, String parentRowKey,
+                                                        Map<Long, Long> annualIdByMonthId) {
         List<String> refs = new ArrayList<>();
         String kind = allocation.getAmountEditKind();
         String ids = allocation.getAmountEditIds();
-        if ("allocation".equals(kind) && singleId(ids)) {
-            refs.add("COST_ALLOCATION|" + ids);
+        if ("allocation".equals(kind) && ids != null && !ids.isBlank()) {
+            // W miesiącu linia ma wiersze miesięczne; pokrycie wskazuje jej roczną linię.
+            Set<String> annualIds = new LinkedHashSet<>();
+            for (String id : ids.split(",")) {
+                String trimmed = id.trim();
+                if (!singleId(trimmed)) {
+                    annualIds.clear();
+                    break;
+                }
+                Long annualId = annualIdByMonthId.get(Long.valueOf(trimmed));
+                annualIds.add(annualId != null ? String.valueOf(annualId) : trimmed);
+            }
+            if (annualIds.size() == 1) {
+                refs.add("COST_ALLOCATION|" + annualIds.iterator().next());
+            }
         }
         if ("travel".equals(kind) && ids != null) {
             for (String id : ids.split(",")) {
@@ -2275,7 +2411,9 @@ public class BudgetMatrixService {
                                                         BigDecimal amountScale,
                                                         List<Grant> grants,
                                                         int fiscalYear,
-                                                        Integer month) {
+                                                        Integer month,
+                                                        Map<String, Map<String, BigDecimal>> planCoverage,
+                                                        Map<Long, Long> annualIdByMonthId) {
         String rowKey = categoryRowKey(categoryCode);
         if (handledCategoryRowKeys.contains(rowKey)) {
             return Optional.empty();
@@ -2355,7 +2493,7 @@ public class BudgetMatrixService {
         Integer evenMonth = month;
         applyStoredSubcategoriesTree(row, grantNames, evenMonth, monthAmounts);
         Map<Long, Map<String, AdminSalaryMove>> salaryMoves = salaryRelocations(grants, fiscalYear, month);
-        applyPlanCoverage(row, planCoverageBySource(grants, fiscalYear, month), grantNames);
+        applyPlanCoverage(row, planCoverage, grantNames, annualIdByMonthId);
         if (PERSONNEL_CODE.equals(categoryCode)) {
             splitAdminSalaryFromPersonnel(row, fiscalYear, salaryMoves, grantNames, month);
         }
