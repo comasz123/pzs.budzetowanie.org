@@ -41,6 +41,10 @@ public class GrantBudgetItem {
     @Column(nullable = false)
     private boolean active = true;
 
+    /** Kategoria zdefiniowana przez użytkownika: grupuje pozycje (podpozycje) i może być pusta. */
+    @Column(nullable = false)
+    private boolean category = false;
+
     /** Pozycja nadrzędna; null dla pozycji głównej. Podpozycje mają kod kategorii rodzica. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")

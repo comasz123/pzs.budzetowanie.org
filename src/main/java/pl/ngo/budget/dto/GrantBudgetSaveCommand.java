@@ -26,6 +26,7 @@ public class GrantBudgetSaveCommand {
         private Integer parentIndex;
         private String name;
         private String code;
+        private boolean category;
         private BigDecimal plannedAmount;
         private List<CoverageCommand> coverages = new ArrayList<>();
     }

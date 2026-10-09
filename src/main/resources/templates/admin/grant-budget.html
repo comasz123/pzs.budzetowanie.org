@@ -164,7 +164,7 @@
             <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div>
                     <h2 class="h5 m-0">Pozycje budżetu grantu</h2>
-                    <p class="text-muted small mb-0 mt-1">Grant finansuje wskazane pozycje budżetu organizacji. Przyciskiem ＋ dodasz podpozycję; pozycja z podpozycjami jest ich sumą.</p>
+                    <p class="text-muted small mb-0 mt-1">Grant finansuje wskazane pozycje budżetu organizacji. Pozycje możesz grupować w kategorie; przy edycji kolumna „Kategoria” przenosi pozycję do wybranej kategorii. Pozycja z podpozycjami jest ich sumą.</p>
                 </div>
                 <button th:if="${editMode}" type="submit" class="btn btn-primary btn-sm">Zapisz budżet</button>
                 <a th:if="${canEdit and !editMode}" class="btn btn-primary btn-sm"
@@ -175,6 +175,7 @@
                     <thead class="table-light">
                     <tr>
                         <th>Pozycja grantu</th>
+                        <th th:if="${editMode}" style="width: 14rem;">Kategoria</th>
                         <th class="text-end" style="width: 9rem;">Plan grantu</th>
                         <th>Pokryta pozycja budżetu organizacji</th>
                         <th class="text-end" id="coveragePlanHeader" style="width: 9rem;"
@@ -189,7 +190,7 @@
                     <tbody id="grantBudgetBody">
                     <th:block th:each="line, lineStat : ${grantBudget.lines}">
                         <tr class="grant-line-row" th:each="cov, covStat : ${line.coveredOrgLines}"
-                            th:attr="data-line-index=${lineStat.index}, data-category-code=${line.code}, data-depth=${line.depth}">
+                            th:attr="data-line-index=${lineStat.index}, data-category-code=${line.code}, data-depth=${line.depth}, data-is-category=${line.category}">
                             <td th:if="${covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}"
                                 th:style="${line.depth > 0 ? 'padding-left:' + (0.5 + line.depth * 1.75) + 'rem' : null}">
                                 <th:block th:if="${editMode}">
@@ -201,12 +202,15 @@
                                            th:value="${line.code}"/>
                                     <input type="hidden" class="line-parent" disabled/>
                                     <textarea class="form-control form-control-sm line-name" rows="2"
-                                              th:classappend="${line.depth == 0} ? 'fw-semibold' : ''"
+                                              th:classappend="${line.category} ? 'fw-semibold' : ''"
                                               th:name="|items[${lineStat.index}].name|"
                                               th:text="${line.name}" required></textarea>
                                 </th:block>
-                                <span th:unless="${editMode}" th:classappend="${line.depth == 0} ? 'fw-semibold' : ''"
+                                <span th:unless="${editMode}" th:classappend="${line.category} ? 'fw-semibold' : ''"
                                       th:text="${(line.depth > 0 ? '↳ ' : '') + line.name}">Pozycja</span>
+                            </td>
+                            <td th:if="${editMode and covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}" class="line-category-cell">
+                                <input type="hidden" class="line-category" th:value="${line.category}"/>
                             </td>
                             <td th:if="${covStat.first}" th:rowspan="${#lists.size(line.coveredOrgLines)}" class="text-end">
                                 <input th:if="${editMode}" class="form-control form-control-sm ms-auto line-planned money-input"
@@ -217,7 +221,8 @@
                                       th:text="${#numbers.formatDecimal(line.plannedAmount, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</span>
                             </td>
                             <td>
-                                <select th:if="${editMode}" class="form-select form-select-sm org-coverage-select"
+                                <div th:if="${editMode}" class="d-flex gap-1 align-items-start">
+                                <select class="form-select form-select-sm org-coverage-select"
                                         th:name="|items[${lineStat.index}].coverages[${covStat.index}].sourceRef|">
                                     <option value="">— wybierz pozycję —</option>
                                     <option th:each="opt : ${grantBudget.orgBudgetLineOptions}"
@@ -226,6 +231,8 @@
                                             th:selected="${cov.sourceRef != null && cov.sourceRef == opt.sourceRef}"
                                             th:text="${opt.balance != null ? opt.label + ' · ' + #numbers.formatDecimal(opt.balance, 1, 'WHITESPACE', 2, 'COMMA') : opt.label}">Pozycja</option>
                                 </select>
+                                <button type="button" class="btn btn-outline-danger btn-sm remove-coverage" title="Usuń to pokrycie">×</button>
+                                </div>
                                 <select th:if="${editMode}" class="form-select form-select-sm employee-coverage-select d-none mt-1" disabled>
                                     <option value="">— wybierz pracownika —</option>
                                 </select>
@@ -264,6 +271,7 @@
                     <tfoot class="table-light">
                     <tr>
                         <th class="text-end">Suma</th>
+                        <th th:if="${editMode}"></th>
                         <th class="text-end" id="grantPlanSum"
                             th:text="${#numbers.formatDecimal(grantBudget.planTotal, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</th>
                         <th></th>
@@ -280,6 +288,7 @@
                     </tr>
                     <tr>
                         <th class="text-end">Pozostało do rozdysponowania</th>
+                        <th th:if="${editMode}"></th>
                         <th class="text-end" id="grantPlanRemaining"
                             th:classappend="${grantBudget.unallocated != null and grantBudget.unallocated.signum() < 0} ? 'text-negative' : ''"
                             th:text="${#numbers.formatDecimal(grantBudget.unallocated, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</th>
@@ -300,8 +309,10 @@
                 <div class="d-flex flex-wrap gap-2">
                     <button type="button" id="addGrantLineBtn" class="btn btn-outline-primary"
                             title="Pozycja z kategorii budżetu organizacji">Dodaj pozycję</button>
-                    <button type="button" id="addCustomCategoryBtn" class="btn btn-outline-primary"
-                            title="Kategoria, której nie ma w budżecie organizacji">Dodaj kategorię spoza budżetu organizacji</button>
+                    <select id="addCategorySelect" class="form-select w-auto border-primary text-primary"
+                            title="Dodaj kategorię grupującą pozycje" aria-label="Dodaj kategorię">
+                        <option value="">Dodaj kategorię…</option>
+                    </select>
                 </div>
                 <button type="submit" class="btn btn-primary">Zapisz budżet</button>
             </div>
@@ -457,7 +468,7 @@
         tr.dataset.categoryCode = categoryCode || '';
         tr.innerHTML = `
             <td>
-                <select class="form-select form-select-sm org-coverage-select">${coverageOptionsHtml(categoryCode, '')}</select>
+                <div class="d-flex gap-1 align-items-start"><select class="form-select form-select-sm org-coverage-select">${coverageOptionsHtml(categoryCode, '')}</select><button type="button" class="btn btn-outline-danger btn-sm remove-coverage" title="Usuń to pokrycie">×</button></div>
                 <select class="form-select form-select-sm employee-coverage-select d-none mt-1" disabled>
                     <option value="">— wybierz pracownika —</option>
                 </select>
@@ -513,28 +524,67 @@
         return rows;
     }
 
-    function createLineRow({ depth, categoryCode, custom }) {
+    /** Usuwa pokrycie: wiersz dodatkowy znika, a pierwszy (z komórkami pozycji) tylko się czyści. */
+    function removeCoverageRow(row) {
+        if (row.querySelector('.line-name')) {
+            row.querySelectorAll('.org-coverage-select').forEach((el) => { el.value = ''; });
+            row.querySelectorAll('.coverage-amount, .coverage-amount-2027').forEach((el) => { el.value = ''; });
+            const picker = row.querySelector('.employee-coverage-select');
+            if (picker) {
+                picker.classList.add('d-none');
+                picker.value = '';
+            }
+        } else {
+            bumpRowspan(grantLineGroup(row)[0], -1);
+            row.remove();
+        }
+        reindex();
+        updateGrantPlanRemaining();
+        updateCoveragePlanTotal();
+        updateAllLineLeft();
+    }
+
+    /** Usuwa pozycję (jej wiersze pokrycia), a podpozycje podnosi o jeden poziom. */
+    function removeLineKeepChildren(firstRow, subtree) {
+        const ownRows = [firstRow];
+        for (let i = 1; i < subtree.length && !subtree[i].querySelector('.line-name'); i++) {
+            ownRows.push(subtree[i]);
+        }
+        subtree.filter((r) => !ownRows.includes(r)).forEach((r) => {
+            const depth = Math.max(0, lineDepth(r) - 1);
+            r.dataset.depth = String(depth);
+            const nameCell = r.querySelector('.line-name')?.closest('td');
+            if (nameCell) {
+                nameCell.style.paddingLeft = depth > 0 ? `${0.5 + depth * 1.75}rem` : '';
+            }
+        });
+        ownRows.forEach((r) => r.remove());
+    }
+
+    function createLineRow({ depth, categoryCode, category }) {
         const row = document.createElement('tr');
         row.className = 'grant-line-row';
         row.dataset.depth = String(depth);
         row.dataset.categoryCode = categoryCode || '';
-        const codeControl = depth > 0 || custom
+        row.dataset.isCategory = category ? 'true' : 'false';
+        const codeControl = depth > 0 || category
             ? `<input type="hidden" class="line-code" value="${escapeHtml(categoryCode || '')}"/>`
             : `<select class="form-select form-select-sm mb-1 line-code">${categoryOptionsHtml('')}</select>`;
-        const badge = custom ? '<div class="small text-muted mb-1">Kategoria spoza budżetu organizacji</div>' : '';
-        const placeholder = custom ? 'Nazwa nowej kategorii' : (depth > 0 ? 'Nazwa podpozycji' : 'Nazwa pozycji grantu');
+        const badge = '';
+        const placeholder = category ? 'Nazwa kategorii' : (depth > 0 ? 'Nazwa podpozycji' : 'Nazwa pozycji grantu');
         const padding = depth > 0 ? ` style="padding-left:${0.5 + depth * 1.75}rem"` : '';
         row.innerHTML = `
             <td rowspan="1"${padding}>
                 ${codeControl}${badge}
                 <input type="hidden" class="line-parent" disabled/>
-                <textarea class="form-control form-control-sm line-name${depth === 0 ? ' fw-semibold' : ''}" rows="2" required placeholder="${placeholder}"></textarea>
+                <textarea class="form-control form-control-sm line-name${category ? ' fw-semibold' : ''}" rows="2" placeholder="${placeholder}"></textarea>
             </td>
+            <td rowspan="1" class="line-category-cell"><input type="hidden" class="line-category" value="${category ? 'true' : 'false'}"/></td>
             <td rowspan="1" class="text-end">
                 <input class="form-control form-control-sm ms-auto line-planned money-input" type="text" inputmode="decimal" value="0,00"/>
             </td>
             <td>
-                <select class="form-select form-select-sm org-coverage-select">${coverageOptionsHtml(categoryCode || '', '')}</select>
+                <div class="d-flex gap-1 align-items-start"><select class="form-select form-select-sm org-coverage-select">${coverageOptionsHtml(categoryCode || '', '')}</select><button type="button" class="btn btn-outline-danger btn-sm remove-coverage" title="Usuń to pokrycie">×</button></div>
                 <select class="form-select form-select-sm employee-coverage-select d-none mt-1" disabled>
                     <option value="">— wybierz pracownika —</option>
                 </select>
@@ -559,21 +609,158 @@
     }
 
     function addGrantLine() {
-        const row = createLineRow({ depth: 0, categoryCode: '', custom: false });
+        const row = createLineRow({ depth: 0, categoryCode: '', category: false });
         body.appendChild(row);
         finishNewLine(row);
     }
 
-    function addCustomCategory() {
-        const row = createLineRow({ depth: 0, categoryCode: '', custom: true });
+    /** Dodaje kategorię: z listy kategorii budżetu organizacji albo nową (własną nazwą). */
+    function addCategory(code) {
+        let name;
+        if (code === '__new__') {
+            name = (prompt('Nazwa nowej kategorii:') || '').trim();
+            if (!name) {
+                return;
+            }
+            code = '';
+        } else {
+            name = categories.find((category) => category.code === code)?.name || '';
+        }
+        const row = createLineRow({ depth: 0, categoryCode: code, category: true });
+        row.querySelector('.line-name').value = name;
         body.appendChild(row);
         finishNewLine(row);
+    }
+
+    function nextFirstRow(first) {
+        const firsts = lineFirstRows();
+        return firsts[firsts.indexOf(first) + 1];
+    }
+
+    function isCategoryRow(first) {
+        if (first.dataset.isCategory === 'true') {
+            return true;
+        }
+        const next = nextFirstRow(first);
+        return Boolean(next) && lineDepth(next) > lineDepth(first);
+    }
+
+    function setRowDepth(first, depth) {
+        first.dataset.depth = String(depth);
+        const nameCell = first.querySelector('.line-name')?.closest('td');
+        if (nameCell) {
+            nameCell.style.paddingLeft = depth > 0 ? `${0.5 + depth * 1.75}rem` : '';
+        }
+    }
+
+    /** Przenosi pozycję (z jej podpozycjami i wierszami pokrycia) do kategorii; pusta wartość = bez kategorii. */
+    function moveToCategory(first, categoryRow) {
+        const rows = lineSubtree(first);
+        const oldDepth = lineDepth(first);
+        const newDepth = categoryRow ? lineDepth(categoryRow) + 1 : 0;
+        const delta = newDepth - oldDepth;
+        const code = categoryRow
+            ? (categoryRow.querySelector('.line-code')?.value || '')
+            : (categories.some((c) => c.code === first.dataset.categoryCode) ? first.dataset.categoryCode : '');
+        rows.forEach((r) => r.remove());
+        let anchor;
+        if (categoryRow) {
+            const target = lineSubtree(categoryRow);
+            anchor = target[target.length - 1];
+        } else {
+            anchor = body.lastElementChild;
+        }
+        rows.forEach((r) => {
+            if (r.querySelector('.line-name')) {
+                setRowDepth(r, lineDepth(r) + delta);
+            }
+            r.dataset.categoryCode = code;
+            const codeInput = r.querySelector('.line-code');
+            if (codeInput && r === first) {
+                if (codeInput.tagName === 'SELECT') {
+                    const hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.className = 'line-code';
+                    codeInput.replaceWith(hidden);
+                }
+                r.querySelector('.line-code').value = code;
+            }
+        });
+        if (anchor) {
+            anchor.after(...rows);
+        } else {
+            body.append(...rows);
+        }
+        rows.forEach((r) => {
+            const coverageSelect = r.querySelector('.org-coverage-select');
+            if (coverageSelect) {
+                filterSelect(coverageSelect, code);
+            }
+        });
+        reindex();
+        updateGrantPlanRemaining();
+        updateAllLineLeft();
+    }
+
+    let categoryKeySeq = 0;
+
+    /** Odświeża kolumnę „Kategoria”: lista kategorii przy każdej pozycji i pogrubienie nazw kategorii. */
+    function refreshCategoryColumn() {
+        const firsts = lineFirstRows();
+        const cats = firsts.filter((row) => lineDepth(row) === 0 && isCategoryRow(row));
+        cats.forEach((row) => {
+            if (!row.dataset.catKey) {
+                row.dataset.catKey = String(++categoryKeySeq);
+            }
+        });
+        firsts.forEach((row, index) => {
+            const cell = row.querySelector('.line-category-cell');
+            const hidden = row.querySelector('.line-category');
+            const category = isCategoryRow(row);
+            row.querySelector('.line-name')?.classList.toggle('fw-semibold', category);
+            if (hidden) {
+                hidden.value = category && lineDepth(row) === 0 ? 'true' : 'false';
+            }
+            if (!cell) {
+                return;
+            }
+            cell.querySelector('.line-category-select')?.remove();
+            cell.querySelector('.line-category-note')?.remove();
+            if (category || lineDepth(row) > 1) {
+                if (category) {
+                    const note = document.createElement('span');
+                    note.className = 'line-category-note text-muted small';
+                    note.textContent = 'kategoria';
+                    cell.append(note);
+                }
+                return;
+            }
+            let parentKey = '';
+            if (lineDepth(row) === 1) {
+                for (let i = index - 1; i >= 0; i--) {
+                    if (lineDepth(firsts[i]) === 0) {
+                        parentKey = firsts[i].dataset.catKey || '';
+                        break;
+                    }
+                }
+            }
+            const select = document.createElement('select');
+            select.className = 'form-select form-select-sm line-category-select';
+            select.style.minWidth = '12rem';
+            select.innerHTML = '<option value="">— bez kategorii —</option>'
+                + cats.map((cat) => {
+                    const label = cat.querySelector('.line-name')?.value.trim() || '(bez nazwy)';
+                    return `<option value="${cat.dataset.catKey}">${escapeHtml(label)}</option>`;
+                }).join('');
+            select.value = parentKey;
+            cell.append(select);
+        });
     }
 
     function addChildLine(parentFirstRow) {
         const depth = lineDepth(parentFirstRow) + 1;
         const parentCode = lineCategoryCode(grantLineGroup(parentFirstRow));
-        const row = createLineRow({ depth, categoryCode: parentCode, custom: false });
+        const row = createLineRow({ depth, categoryCode: parentCode, category: false });
         const subtree = lineSubtree(parentFirstRow);
         subtree[subtree.length - 1].after(row);
         finishNewLine(row);
@@ -606,6 +793,8 @@
                 const codeInput = row.querySelector('.line-code');
                 const nameInput = row.querySelector('.line-name');
                 const plannedInput = row.querySelector('.line-planned');
+                const categoryInput = row.querySelector('.line-category');
+                if (categoryInput) categoryInput.name = `items[${lineIndex}].category`;
                 if (idInput) idInput.name = `items[${lineIndex}].budgetItemId`;
                 if (codeInput) codeInput.name = `items[${lineIndex}].code`;
                 if (nameInput) nameInput.name = `items[${lineIndex}].name`;
@@ -641,6 +830,7 @@
             }
             coverageIndex += 1;
         });
+        refreshCategoryColumn();
     }
 
     function parseAmount(value) {
@@ -800,9 +990,33 @@
     reindex();
 
     document.getElementById('addGrantLineBtn')?.addEventListener('click', addGrantLine);
-    document.getElementById('addCustomCategoryBtn')?.addEventListener('click', addCustomCategory);
+    const addCategorySelect = document.getElementById('addCategorySelect');
+    if (addCategorySelect) {
+        addCategorySelect.insertAdjacentHTML('beforeend',
+            categories.map((c) => `<option value="${escapeHtml(c.code)}">${escapeHtml(c.name)}</option>`).join('')
+            + '<option value="__new__">＋ Nowa…</option>');
+        addCategorySelect.addEventListener('change', () => {
+            const value = addCategorySelect.value;
+            addCategorySelect.value = '';
+            if (value) {
+                addCategory(value);
+            }
+        });
+    }
+    body.addEventListener('input', (event) => {
+        if (event.target.matches('.line-name')) {
+            refreshCategoryColumn();
+        }
+    });
 
     body.addEventListener('change', (event) => {
+        if (event.target.matches('.line-category-select')) {
+            const first = lineFirstRow(event.target.closest('tr'));
+            const key = event.target.value;
+            const categoryRow = key ? lineFirstRows().find((r) => r.dataset.catKey === key) : null;
+            moveToCategory(first, categoryRow || null);
+            return;
+        }
         if (event.target.matches('.org-coverage-select')) {
             syncEmployeePicker(event.target, '');
             ensureTrailingEmptyCoverage(event.target.closest('tr'));
@@ -840,17 +1054,28 @@
             addChildLine(lineFirstRow(addChild.closest('tr')));
             return;
         }
+        const removeCov = event.target.closest('.remove-coverage');
+        if (removeCov) {
+            removeCoverageRow(removeCov.closest('tr'));
+            return;
+        }
         const button = event.target.closest('.remove-grant-line');
         if (!button) {
             return;
         }
         const first = lineFirstRow(button.closest('tr'));
         const subtree = lineSubtree(first);
-        if (subtree.filter((r) => r.querySelector('.line-name')).length > 1
-                && !confirm('Usunąć pozycję razem z jej podpozycjami?')) {
-            return;
+        if (subtree.filter((r) => r.querySelector('.line-name')).length > 1) {
+            if (confirm('Usunąć pozycję razem z jej podpozycjami?\n\nOK – usuń pozycję i podpozycje\nAnuluj – zapytam, czy usunąć samą pozycję')) {
+                subtree.forEach((r) => r.remove());
+            } else if (confirm('Usunąć tylko tę pozycję i zostawić jej podpozycje?')) {
+                removeLineKeepChildren(first, subtree);
+            } else {
+                return;
+            }
+        } else {
+            subtree.forEach((r) => r.remove());
         }
-        subtree.forEach((r) => r.remove());
         reindex();
         updateGrantPlanRemaining();
         updateCoveragePlanTotal();

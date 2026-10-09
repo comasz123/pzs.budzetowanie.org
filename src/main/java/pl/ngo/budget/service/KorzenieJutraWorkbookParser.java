@@ -65,6 +65,8 @@ public final class KorzenieJutraWorkbookParser {
         Map<Integer, BigDecimal> amounts = null;
         Map<Integer, BigDecimal> units = null;
         BigDecimal osif = BigDecimal.ZERO;
+        // Sumy działań (wiersze nagłówkowe): numer pierwszej pozycji działania, nazwa i oczekiwana suma.
+        List<Object[]> sections = new ArrayList<>();
 
         for (int r = 2; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
@@ -84,6 +86,10 @@ public final class KorzenieJutraWorkbookParser {
                 continue;
             }
             if (!hasYear) {
+                BigDecimal sectionTotal = label == null ? null : EmployeeCostWorkbookParser.number(row.getCell(7));
+                if (sectionTotal != null && sectionTotal.signum() != 0) {
+                    sections.add(new Object[]{lines.size() + (open ? 1 : 0), label, sectionTotal});
+                }
                 continue; // nagłówek sekcji (suma działania) albo podsumowanie
             }
 
@@ -112,6 +118,16 @@ public final class KorzenieJutraWorkbookParser {
         }
         if (lines.isEmpty()) {
             throw new IllegalArgumentException("Nie znaleziono pozycji kosztów w arkuszu „" + SHEET_NAME + "”.");
+        }
+        for (int i = 0; i < sections.size(); i++) {
+            int from = (Integer) sections.get(i)[0];
+            int to = i + 1 < sections.size() ? (Integer) sections.get(i + 1)[0] : lines.size();
+            BigDecimal expected = (BigDecimal) sections.get(i)[2];
+            BigDecimal actual = lines.subList(from, to).stream().map(Line::total).reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (actual.subtract(expected).abs().compareTo(new BigDecimal("0.01")) > 0) {
+                warnings.add("Działanie „" + sections.get(i)[1] + "”: suma pozycji " + actual
+                        + " ≠ suma działania w arkuszu " + expected + ".");
+            }
         }
         BigDecimal sum = lines.stream().map(Line::total).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (grandTotal != null && sum.subtract(grandTotal).abs().compareTo(new BigDecimal("0.01")) > 0) {

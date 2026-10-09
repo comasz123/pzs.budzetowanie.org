@@ -57,6 +57,8 @@ public class GrantBudgetViewDto {
         private Long parentId;
         /** Pozycja ma podpozycje: kwoty są sumą podpozycji. */
         private boolean hasChildren;
+        /** Kategoria grupująca pozycje (zaznaczona jako kategoria albo mająca podpozycje). */
+        private boolean category;
         private String name;
         private String code;
         private BigDecimal plannedAmount;

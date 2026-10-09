@@ -58,6 +58,9 @@ public class GrantBudgetService {
                 && allocation.getLabel().startsWith(COVERAGE_LABEL_PREFIX);
     }
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private final GrantRepository grantRepository;
     private final CostAllocationRepository costAllocationRepository;
     private final BudgetItemTemplateRepository budgetItemTemplateRepository;
@@ -130,7 +133,8 @@ public class GrantBudgetService {
                 roots.add(item);
             }
         }
-        roots.sort(Comparator.comparing(GrantBudgetItem::getCode, Comparator.nullsLast(String::compareTo))
+        roots.sort(Comparator.comparing((GrantBudgetItem i) -> !(i.isCategory() || childrenByParent.containsKey(i.getId())))
+                .thenComparing(GrantBudgetItem::getCode, Comparator.nullsLast(String::compareTo))
                 .thenComparing(GrantBudgetItem::getName));
         for (GrantBudgetItem root : roots) {
             addLineTree(dto, root, 0, childrenByParent, spentByBudgetItemId, splitCoverage);
@@ -209,8 +213,12 @@ public class GrantBudgetService {
                 }
                 item = new GrantBudgetItem();
                 item.setGrant(grant);
+                item.setName(name);
                 item.setActive(true);
                 grant.getBudgetItems().add(item);
+                // Zapis od razu, bo istniejąca pozycja przeniesiona pod nową kategorię odwołuje się do niej.
+                entityManager.persist(item);
+                submittedIds.add(item.getId());
             }
             if (itemCommand.getName() != null && !itemCommand.getName().isBlank()) {
                 item.setName(itemCommand.getName().trim());
@@ -223,6 +231,7 @@ public class GrantBudgetService {
             GrantBudgetItem parent = parentIndex != null && parentIndex >= 0 && parentIndex < index
                     ? resolved.get(parentIndex) : null;
             item.setParent(parent);
+            item.setCategory(itemCommand.isCategory() && parent == null);
             if (parent != null) {
                 // Podpozycja należy do kategorii rodzica.
                 item.setCode(parent.getCode());
@@ -299,6 +308,7 @@ public class GrantBudgetService {
         line.setParentId(item.getParent() != null ? item.getParent().getId() : null);
         List<GrantBudgetItem> children = childrenByParent.getOrDefault(item.getId(), List.of());
         line.setHasChildren(!children.isEmpty());
+        line.setCategory(item.isCategory() || !children.isEmpty());
         dto.getLines().add(line);
         children.stream()
                 .sorted(Comparator.comparing(GrantBudgetItem::getName, String.CASE_INSENSITIVE_ORDER))
