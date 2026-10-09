@@ -159,7 +159,7 @@ public class BudgetExcelExportService {
                         : null;
                 writeMoney(row, 2 + i, coverage, styles.money(depth, coverage));
             }
-            writeMoney(row, balanceColumn, displayRow.getBalance(), styles.money(depth, displayRow.getBalance()));
+            writeMoney(row, balanceColumn, displayRow.getBilans(), styles.money(depth, displayRow.getBilans()));
         }
         outlineRows(sheet, firstDataRow, rows);
 
@@ -172,7 +172,7 @@ public class BudgetExcelExportService {
                     : null;
             writeMoney(total, 2 + i, coverage, styles.totalMoney(coverage));
         }
-        writeMoney(total, balanceColumn, annual.getBalance(), styles.totalMoney(annual.getBalance()));
+        writeMoney(total, balanceColumn, annual.getBilans(), styles.totalMoney(annual.getBilans()));
 
         Row note = sheet.createRow(rowIndex + 2);
         writeText(note, 0,
@@ -243,7 +243,7 @@ public class BudgetExcelExportService {
                     : null;
             writeMoney(row, 2 + i, coverage, styles.money(depth, coverage));
         }
-        writeMoney(row, balanceColumn, item.getBalance(), styles.money(depth, item.getBalance()));
+        writeMoney(row, balanceColumn, item.getBilans(), styles.money(depth, item.getBilans()));
     }
 
     private void writeAllocationSheet(XSSFWorkbook workbook,
@@ -275,7 +275,7 @@ public class BudgetExcelExportService {
                 writeMoney(excelRow, 1 + i, amount, styles.money(1, amount));
             }
             writeMoney(excelRow, amountColumn, allocation.getAmount(), styles.money(1, allocation.getAmount()));
-            writeMoney(excelRow, balanceColumn, allocation.getBalance(), styles.money(1, allocation.getBalance()));
+            writeMoney(excelRow, balanceColumn, allocation.getBilans(), styles.money(1, allocation.getBilans()));
             writeMoney(excelRow, percentColumn, allocation.getPercent(), styles.money(1, allocation.getPercent()));
         }
         sheet.createFreezePane(1, 1);

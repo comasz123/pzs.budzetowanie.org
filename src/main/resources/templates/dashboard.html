@@ -394,14 +394,14 @@
             </div>
         </div>
         <div class="kpi-card">
-            <div class="card shadow-sm border-0 border-start border-4 h-100" th:classappend="${budgetData.balance != null && budgetData.balance.signum() > 0} ? 'border-danger' : 'border-success'">
+            <div class="card shadow-sm border-0 border-start border-4 h-100" th:classappend="${budgetData.bilans != null && budgetData.bilans.signum() < 0} ? 'border-danger' : 'border-success'">
                 <div class="card-body">
                     <div class="text-muted kpi-label">Bilans</div>
                     <div class="fw-bold kpi-value"
-                         th:classappend="${budgetData.balance != null && budgetData.balance.signum() > 0} ? 'text-danger' : 'text-success'"
-                         th:text="${#numbers.formatDecimal(budgetData.balance != null ? budgetData.balance.abs() : 0, 1, 'WHITESPACE', 2, 'COMMA')}">0</div>
+                         th:classappend="${budgetData.bilans != null && budgetData.bilans.signum() < 0} ? 'text-danger' : 'text-success'"
+                         th:text="${#numbers.formatDecimal(budgetData.bilans != null ? budgetData.bilans : 0, 1, 'WHITESPACE', 2, 'COMMA')}">0</div>
                     <div class="text-muted kpi-note"
-                         th:text="${budgetBase == '/realizacja'} ? 'Wydatki bez przypisanego grantu' : 'Niepokryty koszt planowany (plan − pokrycie grantami)'">Niepokryty koszt planowany (plan − pokrycie grantami)</div>
+                         th:text="${budgetBase == '/realizacja'} ? 'Wydatki bez przypisanego grantu' : 'Pokrycie grantami minus koszt planowany'">Pokrycie grantami minus koszt planowany</div>
                 </div>
             </div>
         </div>
@@ -542,8 +542,8 @@
                         <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount budget-view-amount-col"
                             th:text="${row.coverageByGrant.get(grant) != null && row.coverageByGrant.get(grant) > 0 ? #numbers.formatDecimal(row.coverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
                         <td class="text-end col-amount budget-view-amount-col col-sticky-balance"
-                            th:classappend="${row.balance != null && row.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
-                            th:text="${row.balance != null ? #numbers.formatDecimal(row.balance, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0.00</td>
+                            th:classappend="${row.bilans != null && row.bilans.signum() < 0} ? 'text-negative' : 'text-positive'"
+                            th:text="${row.bilans != null ? #numbers.formatDecimal(row.bilans, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0.00</td>
                     </tr>
                     <tr class="table-secondary fw-semibold budget-totals-row">
                         <td class="col-label" th:text="${budgetBase == '/realizacja'} ? 'Razem' : 'Razem (plan)'">Razem (plan)</td>
@@ -551,8 +551,8 @@
                         <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
                             th:text="${budgetData.totalCoverageByGrant.get(grant) != null && budgetData.totalCoverageByGrant.get(grant).signum() > 0 ? #numbers.formatDecimal(budgetData.totalCoverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
                         <td class="text-end col-amount col-sticky-balance"
-                            th:classappend="${budgetData.balance != null && budgetData.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
-                            th:text="${#numbers.formatDecimal(budgetData.balance, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                            th:classappend="${budgetData.bilans != null && budgetData.bilans.signum() < 0} ? 'text-negative' : 'text-positive'"
+                            th:text="${#numbers.formatDecimal(budgetData.bilans, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
                     </tr>
                     <tr class="budget-edit-block" th:if="${!monthView}">
                         <td colspan="100">

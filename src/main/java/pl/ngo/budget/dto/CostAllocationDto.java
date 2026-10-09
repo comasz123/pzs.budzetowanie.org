@@ -20,6 +20,11 @@ public class CostAllocationDto {
     private BigDecimal amount = BigDecimal.ZERO;
     private BigDecimal percent = BigDecimal.ZERO;
     private BigDecimal balance = BigDecimal.ZERO;
+
+    /** Bilans do wyświetlania: pokrycie minus wydatek (odwrotność {@code balance} = wydatek minus pokrycie). */
+    public BigDecimal getBilans() {
+        return balance == null ? null : balance.negate();
+    }
     private Map<String, BigDecimal> amountByGrant = new LinkedHashMap<>();
     private String amountEditKind;
     private String amountEditIds;

@@ -74,8 +74,8 @@
                     <td class="text-end col-amount fw-bold" th:text="${#numbers.formatDecimal(row.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
                     <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
                         th:text="${row.coverageByGrant.get(grant) != null && row.coverageByGrant.get(grant) > 0 ? #numbers.formatDecimal(row.coverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
-                    <td class="text-end col-amount" th:classappend="${row.balance != null && row.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
-                        th:text="${#numbers.formatDecimal(row.balance, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                    <td class="text-end col-amount" th:classappend="${row.bilans != null && row.bilans.signum() < 0} ? 'text-negative' : 'text-positive'"
+                        th:text="${#numbers.formatDecimal(row.bilans, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
                 </tr>
                 <tr th:each="child : ${row.children}">
                     <td class="col-label ps-4">
@@ -89,8 +89,8 @@
                         th:text="${child.totalCost != null && child.totalCost > 0 ? #numbers.formatDecimal(child.totalCost, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
                     <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
                         th:text="${child.coverageByGrant.get(grant) != null && child.coverageByGrant.get(grant) > 0 ? #numbers.formatDecimal(child.coverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
-                    <td class="text-end col-amount" th:classappend="${child.balance != null && child.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
-                        th:text="${child.balance != null ? #numbers.formatDecimal(child.balance, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+                    <td class="text-end col-amount" th:classappend="${child.bilans != null && child.bilans.signum() < 0} ? 'text-negative' : 'text-positive'"
+                        th:text="${child.bilans != null ? #numbers.formatDecimal(child.bilans, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
                 </tr>
                 </tbody>
             </table>
@@ -118,8 +118,8 @@
                     <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
                         th:text="${alloc.amountByGrant.get(grant) != null && alloc.amountByGrant.get(grant) > 0 ? #numbers.formatDecimal(alloc.amountByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
                     <td class="text-end col-amount" th:text="${#numbers.formatDecimal(alloc.amount, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
-                    <td class="text-end col-amount" th:classappend="${alloc.balance != null && alloc.balance.signum() < 0} ? 'text-negative' : 'text-positive'"
-                        th:text="${#numbers.formatDecimal(alloc.balance, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                    <td class="text-end col-amount" th:classappend="${alloc.bilans != null && alloc.bilans.signum() < 0} ? 'text-negative' : 'text-positive'"
+                        th:text="${#numbers.formatDecimal(alloc.bilans, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
                     <td class="text-end col-amount" th:text="${#numbers.formatDecimal(alloc.percent, 1, 'WHITESPACE', 1, 'COMMA')} + '%'">0%</td>
                 </tr>
                 </tbody>

@@ -20,6 +20,11 @@ public class BudgetDashboardDto {
     private BigDecimal totalCost = BigDecimal.ZERO;
     private BigDecimal totalGrantCoverage = BigDecimal.ZERO;
     private BigDecimal balance = BigDecimal.ZERO;
+
+    /** Bilans do wyświetlania: pokrycie minus wydatek (odwrotność {@code balance} = wydatek minus pokrycie). */
+    public BigDecimal getBilans() {
+        return balance == null ? null : balance.negate();
+    }
     private List<String> grantNames = new ArrayList<>();
     /** Budżet grantu albo plan pokrycia na rok minus pokrycie wpisane w pozycje budżetu. */
     private Map<String, BigDecimal> grantRemainingByName = new HashMap<>();
@@ -62,6 +67,11 @@ public class BudgetDashboardDto {
         private boolean linkable;
         private BigDecimal totalCost = BigDecimal.ZERO;
         private BigDecimal balance = BigDecimal.ZERO;
+
+        /** Bilans do wyświetlania: pokrycie minus wydatek (odwrotność {@code balance} = wydatek minus pokrycie). */
+        public BigDecimal getBilans() {
+            return balance == null ? null : balance.negate();
+        }
         private Map<String, BigDecimal> coverageByGrant = new HashMap<>();
         private Long categoryTemplateId;
         private String parentRowKey;
@@ -86,6 +96,11 @@ public class BudgetDashboardDto {
         private BigDecimal totalCost = BigDecimal.ZERO;
         private BigDecimal overallCoverage = BigDecimal.ZERO;
         private BigDecimal balance = BigDecimal.ZERO;
+
+        /** Bilans do wyświetlania: pokrycie minus wydatek (odwrotność {@code balance} = wydatek minus pokrycie). */
+        public BigDecimal getBilans() {
+            return balance == null ? null : balance.negate();
+        }
         private Map<String, BigDecimal> coverageByGrant = new HashMap<>();
         private List<BudgetItemRowDto> children = new ArrayList<>();
         private List<CostAllocationDto> allocations = new ArrayList<>();
