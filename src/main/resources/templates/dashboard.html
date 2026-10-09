@@ -8,6 +8,8 @@
     <script th:src="@{/js/money-input.js}"></script>
     <style>
         .table-responsive { max-height: 70vh; overflow-x: auto; overflow-y: auto; }
+        /* Luz pod ostatnim wierszem, żeby pasek przewijania nie zasłaniał „Razem”. */
+        #budget-matrix-table { margin-bottom: 1.5rem !important; }
         .budget-matrix td.text-negative,
         .text-negative { color: #dc3545 !important; font-weight: bold; }
         .text-positive { color: #198754; font-weight: bold; }
