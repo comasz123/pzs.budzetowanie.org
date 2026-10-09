@@ -298,6 +298,69 @@ public class DashboardController {
         }
     }
 
+    @PostMapping({"/dashboard/lines/split-months", "/realizacja/lines/split-months"})
+    @ResponseBody
+    public ResponseEntity<String> splitBudgetLineEvenly(@RequestParam int year,
+                                                        @RequestParam(required = false) String kind,
+                                                        @RequestParam(required = false) String ids,
+                                                        @RequestParam(required = false) BigDecimal amount,
+                                                        @RequestParam(required = false) String parentRowKey,
+                                                        @RequestParam(required = false) String rowKey) {
+        try {
+            budgetSetupService.splitBudgetLineEvenly(year, kind, ids, amount, parentRowKey, rowKey);
+            return ResponseEntity.ok("ok");
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage() != null ? ex.getMessage() : "Nie udało się rozpisać kosztu");
+        }
+    }
+
+    @PostMapping({"/dashboard/lines/planned", "/realizacja/lines/planned"})
+    @ResponseBody
+    public ResponseEntity<String> setBudgetLinePlannedAmount(@RequestParam int year,
+                                                             @RequestParam(required = false) String kind,
+                                                             @RequestParam(required = false) String ids,
+                                                             @RequestParam(required = false) BigDecimal amount,
+                                                             @RequestParam(required = false) String parentRowKey,
+                                                             @RequestParam(required = false) String rowKey) {
+        try {
+            budgetSetupService.setBudgetLinePlannedAmount(year, kind, ids, amount, parentRowKey, rowKey);
+            return ResponseEntity.ok("ok");
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage() != null ? ex.getMessage() : "Nie udało się zapisać kwoty");
+        }
+    }
+
+    @PostMapping({"/dashboard/employees/{id}/budget-period", "/realizacja/employees/{id}/budget-period"})
+    @ResponseBody
+    public ResponseEntity<String> setEmployeeBudgetPeriod(
+            @PathVariable Long id,
+            @RequestParam int year,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(
+                    iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(
+                    iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate to) {
+        try {
+            budgetSetupService.setEmployeeBudgetPeriod(id, year, from, to);
+            return ResponseEntity.ok("ok");
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage() != null ? ex.getMessage() : "Nie udało się zapisać okresu");
+        }
+    }
+
+    @PostMapping({"/dashboard/lines/delete", "/realizacja/lines/delete"})
+    @ResponseBody
+    public ResponseEntity<String> deleteBudgetLine(@RequestParam int year,
+                                                   @RequestParam(required = false) String kind,
+                                                   @RequestParam String ids,
+                                                   @RequestParam(required = false) String lineKey) {
+        try {
+            budgetSetupService.deleteBudgetLine(year, kind, ids, lineKey);
+            return ResponseEntity.ok("ok");
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage() != null ? ex.getMessage() : "Nie udało się usunąć wydatku");
+        }
+    }
+
     @PostMapping({"/dashboard/subcategories/rename", "/realizacja/subcategories/rename"})
     @ResponseBody
     public ResponseEntity<String> renameBudgetSubcategory(@RequestParam String parentRowKey,
@@ -420,7 +483,11 @@ public class DashboardController {
         model.addAttribute("monthView", false);
         model.addAttribute("selectedYear", selectedYear);
         model.addAttribute("availableYears", budgetMatrixService.getAvailableFiscalYears());
-        model.addAttribute("budgetData", budgetMatrixService.getBudgetDashboardData(selectedYear));
+        pl.ngo.budget.dto.BudgetDashboardDto budgetData = budgetMatrixService.getBudgetDashboardData(selectedYear);
+        if (!BudgetSection.REALIZATION.equals(BudgetSection.currentBase())) {
+            budgetStructureService.applyPlannedCosts(budgetData);
+        }
+        model.addAttribute("budgetData", budgetData);
         realizeIfNeeded(model, selectedYear, null);
         model.addAttribute("backupInfo", databaseBackupService.getLatestBackupInfo());
     }

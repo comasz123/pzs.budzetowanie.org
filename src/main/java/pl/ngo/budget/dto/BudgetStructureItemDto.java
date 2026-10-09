@@ -27,6 +27,19 @@ public class BudgetStructureItemDto {
     private boolean expense;
     /** Klucz naturalny linii wydatku — do przenoszenia między kategoriami. */
     private String lineKey;
+    /**
+     * Rodzaj pozycji dla planowanego kosztu i rozpisu na 12 miesięcy: allocation, publication, travel, event,
+     * subcategory (pusta podkategoria); null = kwota liczona z zawartości.
+     */
+    private String editKind;
+    /** Identyfikatory pozycji danego rodzaju (dla allocation — roczne linie planu). */
+    private String allocationIds;
+    /** Linia pensji: bez usuwania i przenoszenia (pracowników prowadzi zakładka Pracownicy). */
+    private boolean personnel;
+    /** Wiersz pracownika: id i okres pracy w budżecie (od–do) dla rozpisu pensji. */
+    private Long employeeId;
+    private java.time.LocalDate periodFrom;
+    private java.time.LocalDate periodTo;
     private BigDecimal plannedAmount;
     /** Podpozycje (całe drzewo) — wypełniane przy {@code getTree}. */
     private List<BudgetStructureItemDto> children = new ArrayList<>();

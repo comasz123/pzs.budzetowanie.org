@@ -120,6 +120,18 @@ public class AuditService {
         if (path.contains("/categories/") && path.endsWith("/delete")) {
             return "Usunięcie kategorii";
         }
+        if (path.endsWith("/budget-period")) {
+            return "Zmiana okresu pracy w budżecie";
+        }
+        if (path.endsWith("/lines/planned")) {
+            return "Zmiana planowanego kosztu wydatku";
+        }
+        if (path.endsWith("/lines/delete")) {
+            return "Usunięcie wydatku";
+        }
+        if (path.endsWith("/lines/split-months")) {
+            return "Rozpisanie wydatku na 12 miesięcy";
+        }
         if (path.endsWith("/subcategories/delete")) {
             return "Usunięcie podpozycji";
         }

@@ -35,12 +35,16 @@ public class BudgetExcelExportService {
 
     private static final String TOTAL_LABEL = "Razem (plan)";
     private static final String COST_HEADER = "Planowany Koszt";
+    private static final String COVERAGE_HEADER = "Pokrycie w miesiącach";
     private static final String POSITION_HEADER = "Pozycja / Koszt";
 
     private final BudgetMatrixService budgetMatrixService;
+    private final BudgetStructureService budgetStructureService;
 
-    public BudgetExcelExportService(BudgetMatrixService budgetMatrixService) {
+    public BudgetExcelExportService(BudgetMatrixService budgetMatrixService,
+                                    BudgetStructureService budgetStructureService) {
         this.budgetMatrixService = budgetMatrixService;
+        this.budgetStructureService = budgetStructureService;
     }
 
     public void writeYear(OutputStream output, int fiscalYear) throws IOException {
@@ -52,6 +56,7 @@ public class BudgetExcelExportService {
             Styles styles = new Styles(workbook);
             for (int fiscalYear : fiscalYears) {
                 BudgetDashboardDto annual = budgetMatrixService.getBudgetDashboardDataForYear(fiscalYear);
+                budgetStructureService.applyPlannedCosts(annual);
                 List<BudgetDashboardDto> months = new ArrayList<>();
                 for (int month = 1; month <= 12; month++) {
                     months.add(budgetMatrixService.getBudgetDashboardDataForMonth(fiscalYear, month));
@@ -104,6 +109,9 @@ public class BudgetExcelExportService {
         BudgetDashboardDto data = month != null
                 ? budgetMatrixService.getBudgetDashboardDataForMonth(fiscalYear, month)
                 : budgetMatrixService.getBudgetDashboardDataForYear(fiscalYear);
+        if (month == null && !realization) {
+            budgetStructureService.applyPlannedCosts(data);
+        }
         if (realization) {
             budgetMatrixService.applyRealizationExpenditures(data, fiscalYear, month);
         }
@@ -120,18 +128,20 @@ public class BudgetExcelExportService {
                                   boolean includeGrantInfo) {
         Sheet sheet = workbook.createSheet(sheetName(sheetTitle));
         List<String> grants = annual.getGrantNames() != null ? annual.getGrantNames() : List.of();
-        int balanceColumn = 2 + grants.size();
+        // Widok planowania: dodatkowa kolumna "Planowany Koszt" przed kolumną pokrycia w miesiącach.
+        int grantStart = includeGrantInfo ? 3 : 2;
+        int balanceColumn = grantStart + grants.size();
 
         int rowIndex = 0;
         if (includeGrantInfo) {
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Zostało do wydania (rok)",
-                    grants, annual.getGrantRemainingByName(), balanceColumn);
+                    grants, annual.getGrantRemainingByName(), grantStart, balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Całkowita suma grantu",
-                    grants, annual.getGrantFullTotalByName(), balanceColumn);
+                    grants, annual.getGrantFullTotalByName(), grantStart, balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Suma na rok " + fiscalYear,
-                    grants, annual.getGrantYearAmountByName(), balanceColumn);
+                    grants, annual.getGrantYearAmountByName(), grantStart, balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Alokowano na rok " + (fiscalYear + 1),
-                    grants, annual.getGrantNextYearByName(), balanceColumn);
+                    grants, annual.getGrantNextYearByName(), grantStart, balanceColumn);
             rowIndex++;
         }
 
@@ -139,9 +149,16 @@ public class BudgetExcelExportService {
         Row header = sheet.createRow(headerRow);
         header.setHeightInPoints(36);
         writeText(header, 0, POSITION_HEADER, styles.headerLeft);
-        writeText(header, 1, costHeader, styles.header);
+        // Widok planowania: kolumna "Planowany Koszt" (ze struktury budżetu), a po niej pokrycie w miesiącach.
+        int monthsColumn = includeGrantInfo ? 2 : 1;
+        if (includeGrantInfo) {
+            writeText(header, 1, COST_HEADER, styles.header);
+        }
+        String monthsHeader = annual.getTotalMonthsGap() != null ? COVERAGE_HEADER
+                : (includeGrantInfo ? "Koszt w miesiącu" : costHeader);
+        writeText(header, monthsColumn, monthsHeader, styles.header);
         for (int i = 0; i < grants.size(); i++) {
-            writeText(header, 2 + i, grants.get(i), styles.header);
+            writeText(header, grantStart + i, grants.get(i), styles.header);
         }
         writeText(header, balanceColumn, "Bilans", styles.header);
         rowIndex++;
@@ -152,12 +169,16 @@ public class BudgetExcelExportService {
             int depth = depthOf(displayRow);
             Row row = sheet.createRow(rowIndex++);
             writeText(row, 0, displayRow.getItemName(), styles.text(depth));
-            writeMoney(row, 1, displayRow.getTotalCost(), styles.money(depth, displayRow.getTotalCost()));
+            if (includeGrantInfo) {
+                writeMoney(row, 1, displayRow.getPlannedCost(), styles.money(depth, displayRow.getPlannedCost()));
+            }
+            BigDecimal monthsValue = displayRow.getMonthsGap() != null ? displayRow.getMonthsGap() : displayRow.getTotalCost();
+            writeMoney(row, monthsColumn, monthsValue, styles.money(depth, monthsValue));
             for (int i = 0; i < grants.size(); i++) {
                 BigDecimal coverage = displayRow.getCoverageByGrant() != null
                         ? displayRow.getCoverageByGrant().get(grants.get(i))
                         : null;
-                writeMoney(row, 2 + i, coverage, styles.money(depth, coverage));
+                writeMoney(row, grantStart + i, coverage, styles.money(depth, coverage));
             }
             writeMoney(row, balanceColumn, displayRow.getBilans(), styles.money(depth, displayRow.getBilans()));
         }
@@ -165,12 +186,16 @@ public class BudgetExcelExportService {
 
         Row total = sheet.createRow(rowIndex);
         writeText(total, 0, totalLabel, styles.totalText);
-        writeMoney(total, 1, annual.getTotalCost(), styles.totalMoney(annual.getTotalCost()));
+        if (includeGrantInfo) {
+            writeMoney(total, 1, annual.getTotalPlannedCost(), styles.totalMoney(annual.getTotalPlannedCost()));
+        }
+        BigDecimal monthsTotal = annual.getTotalMonthsGap() != null ? annual.getTotalMonthsGap() : annual.getTotalCost();
+        writeMoney(total, monthsColumn, monthsTotal, styles.totalMoney(monthsTotal));
         for (int i = 0; i < grants.size(); i++) {
             BigDecimal coverage = annual.getTotalCoverageByGrant() != null
                     ? annual.getTotalCoverageByGrant().get(grants.get(i))
                     : null;
-            writeMoney(total, 2 + i, coverage, styles.totalMoney(coverage));
+            writeMoney(total, grantStart + i, coverage, styles.totalMoney(coverage));
         }
         writeMoney(total, balanceColumn, annual.getBilans(), styles.totalMoney(annual.getBilans()));
 
@@ -198,13 +223,13 @@ public class BudgetExcelExportService {
         int rowIndex = 0;
         if (includeGrantInfo) {
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Zostało do wydania (rok)",
-                    grants, dashboard.getGrantRemainingByName(), balanceColumn);
+                    grants, dashboard.getGrantRemainingByName(), 2, balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Całkowita suma grantu",
-                    grants, dashboard.getGrantFullTotalByName(), balanceColumn);
+                    grants, dashboard.getGrantFullTotalByName(), 2, balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Suma na rok " + fiscalYear,
-                    grants, dashboard.getGrantYearAmountByName(), balanceColumn);
+                    grants, dashboard.getGrantYearAmountByName(), 2, balanceColumn);
             rowIndex = writeGrantInfoRow(sheet, styles, rowIndex, "Alokowano na rok " + (fiscalYear + 1),
-                    grants, dashboard.getGrantNextYearByName(), balanceColumn);
+                    grants, dashboard.getGrantNextYearByName(), 2, balanceColumn);
             rowIndex++;
         }
         int headerRow = rowIndex;
@@ -338,13 +363,17 @@ public class BudgetExcelExportService {
                                   String label,
                                   List<String> grants,
                                   Map<String, BigDecimal> amounts,
+                                  int grantStart,
                                   int balanceColumn) {
         Row row = sheet.createRow(rowIndex);
         writeText(row, 0, label, styles.infoText);
         writeText(row, 1, "—", styles.infoText);
+        if (grantStart > 2) {
+            writeText(row, 2, "—", styles.infoText);
+        }
         for (int i = 0; i < grants.size(); i++) {
             BigDecimal amount = amounts != null ? amounts.get(grants.get(i)) : null;
-            writeMoney(row, 2 + i, amount, styles.infoMoney(amount));
+            writeMoney(row, grantStart + i, amount, styles.infoMoney(amount));
         }
         writeText(row, balanceColumn, "—", styles.infoText);
         return rowIndex + 1;

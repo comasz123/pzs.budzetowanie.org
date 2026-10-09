@@ -49,7 +49,10 @@ class BudgetExcelExportTest {
                 Sheet monthly = workbook.getSheet("Miesiące " + year);
                 assertNotNull(annual, "Brak arkusza roku " + year);
                 assertNotNull(monthly, "Brak arkusza miesięcy " + year);
-                assertEquals(0, findAmount(annual, "Razem (plan)", 1).compareTo(scale(dashboard.getTotalCost())),
+                // Planowany koszt minus pokrycie w miesiącach (= planowany minus suma miesięcy) to suma miesięcy.
+                assertEquals(0, findAmount(annual, "Razem (plan)", 1)
+                                .subtract(findAmount(annual, "Razem (plan)", 2))
+                                .compareTo(scale(dashboard.getTotalCost())),
                         "suma roku " + year);
                 assertEquals(0, findAmount(monthly, "Razem (plan)", 13).compareTo(scale(dashboard.getTotalCost())),
                         "suma miesięcy " + year);

@@ -215,6 +215,7 @@ public class DataInitializer implements CommandLineRunner {
         ensureEmployeesFromSeedExist();
         ensureAllStandardBudgetTemplates();
         budgetSetupService.ensureBudgetCategoryDisplayOrder();
+        budgetSetupService.freezeAnnualPlannedAmounts();
 
         removeBudgetDataIfConfigured();
 
@@ -628,6 +629,7 @@ public class DataInitializer implements CommandLineRunner {
         syncEditorUser(editRole, organization);
         ensureAllStandardBudgetTemplates();
         budgetSetupService.ensureBudgetCategoryDisplayOrder();
+        budgetSetupService.freezeAnnualPlannedAmounts();
         log.info(
                 "Pusta instalacja: organizacja={} ({}), szablony={}, pracownicy={}, granty={}, wydatki={}",
                 organization.getName(),

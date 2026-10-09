@@ -58,4 +58,23 @@ public class CostAllocation {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    /**
+     * „Planowany Koszt” linii planu rocznego: stała kwota z importu / przygotowania budżetu albo wpisana w edycji
+     * budżetu. Edycja miesięcy zmienia {@code amount}, nigdy tej kwoty.
+     */
+    @Column(precision = 12, scale = 2)
+    private BigDecimal plannedAmount;
+
+    /** Planowany koszt; dla linii sprzed tej kolumny — kwota roczna. */
+    public BigDecimal plannedOrAmount() {
+        return plannedAmount != null ? plannedAmount : amount;
+    }
+
+    @PrePersist
+    void freezePlannedAmount() {
+        if (plannedAmount == null && planMonth == null && expenditure == null) {
+            plannedAmount = amount;
+        }
+    }
 }

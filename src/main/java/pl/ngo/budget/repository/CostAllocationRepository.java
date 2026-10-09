@@ -87,6 +87,14 @@ public interface CostAllocationRepository extends JpaRepository<CostAllocation, 
             """)
     boolean existsMonthlyPlanForFiscalYear(Integer fiscalYear);
 
+    /** Linie planu rocznego bez planowanego kosztu dostają go z obecnej kwoty rocznej (jednorazowo). */
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE CostAllocation a SET a.plannedAmount = a.amount
+            WHERE a.plannedAmount IS NULL AND a.planMonth IS NULL AND a.expenditure IS NULL
+            """)
+    int freezeAnnualPlannedAmounts();
+
     @Modifying(flushAutomatically = true)
     @Query("""
             DELETE FROM CostAllocation a

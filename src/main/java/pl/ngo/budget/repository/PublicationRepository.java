@@ -10,6 +10,11 @@ import java.util.List;
 
 @Repository
 public interface PublicationRepository extends JpaRepository<Publication, Long> {
+
+    /** Planowany koszt budżetu z obecnej kwoty (jednorazowo, dla pozycji sprzed tej kolumny). */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE Publication p SET p.budgetPlannedCost = p.plannedCost WHERE p.budgetPlannedCost IS NULL")
+    int freezeBudgetPlannedCosts();
     List<Publication> findByActiveTrueOrderByTitleAsc();
 
     @Modifying

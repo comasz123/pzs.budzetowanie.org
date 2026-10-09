@@ -254,6 +254,20 @@ class DashboardRenderTest {
     }
 
     @Test
+    void structurePagesRenderPlannedCostControls() throws Exception {
+        mockMvc.perform(get("/dashboard/structure").param("year", "2026").param("rowKey", "wynagrodzenia"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("structure-period-from")))
+                .andExpect(content().string(containsString("structure-split12")))
+                .andExpect(content().string(containsString("</html>")));
+        mockMvc.perform(get("/dashboard/structure").param("year", "2026").param("rowKey", "koszty-administracyjne"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("structure-split12")))
+                .andExpect(content().string(containsString("structure-line-delete")))
+                .andExpect(content().string(containsString("</html>")));
+    }
+
+    @Test
     void dashboardRowRenders() throws Exception {
         mockMvc.perform(get("/dashboard/row").param("year", "2026").param("rowKey", "wynagrodzenia"))
                 .andExpect(status().isOk());

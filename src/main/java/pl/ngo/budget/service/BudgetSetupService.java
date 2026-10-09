@@ -10,6 +10,7 @@ import pl.ngo.budget.entity.coverage.BudgetSubcategoryOrder;
 import pl.ngo.budget.entity.coverage.Grant;
 import pl.ngo.budget.entity.coverage.GrantBudgetItem;
 import pl.ngo.budget.entity.coverage.GrantTranche;
+import pl.ngo.budget.entity.coverage.BudgetMonthAmount;
 import pl.ngo.budget.entity.coverage.PlannedEvent;
 import pl.ngo.budget.entity.coverage.Publication;
 import pl.ngo.budget.entity.coverage.TravelBudgetLine;
@@ -48,6 +49,7 @@ public class BudgetSetupService {
     private final TravelBudgetLineRepository travelBudgetLineRepository;
     private final PlannedEventRepository plannedEventRepository;
     private final pl.ngo.budget.repository.BudgetLineAssignmentRepository budgetLineAssignmentRepository;
+    private final pl.ngo.budget.repository.BudgetMonthAmountRepository budgetMonthAmountRepository;
 
     public BudgetSetupService(CostAllocationRepository costAllocationRepository,
                               GrantRepository grantRepository,
@@ -57,7 +59,9 @@ public class BudgetSetupService {
                               PublicationRepository publicationRepository,
                               TravelBudgetLineRepository travelBudgetLineRepository,
                               PlannedEventRepository plannedEventRepository,
-                              pl.ngo.budget.repository.BudgetLineAssignmentRepository budgetLineAssignmentRepository) {
+                              pl.ngo.budget.repository.BudgetLineAssignmentRepository budgetLineAssignmentRepository,
+                              pl.ngo.budget.repository.BudgetMonthAmountRepository budgetMonthAmountRepository) {
+        this.budgetMonthAmountRepository = budgetMonthAmountRepository;
         this.budgetLineAssignmentRepository = budgetLineAssignmentRepository;
         this.costAllocationRepository = costAllocationRepository;
         this.grantRepository = grantRepository;
@@ -445,12 +449,12 @@ public class BudgetSetupService {
             entry.setHidden(false);
         }
         BigDecimal stored = amount != null && amount.signum() >= 0 ? amount.setScale(2, RoundingMode.HALF_UP) : null;
+        // Kwota w strukturze to „Planowany Koszt”: miesiące zostają, jakie były (zmienia je edycja miesiąca albo „12”).
+        if (entry.getMonthsAmount() == null) {
+            entry.setMonthsAmount(entry.getPlannedAmount() != null ? entry.getPlannedAmount() : BigDecimal.ZERO);
+        }
         entry.setPlannedAmount(stored);
         budgetSubcategoryOrderRepository.save(entry);
-        if (fiscalYear != null && stored != null
-                && (MonthlySplit.isSalaryOrAdminRow(parent) || MonthlySplit.isSalaryOrAdminRow(key))) {
-            redistributeSalaryOrAdminStructure(fiscalYear, parent, key, stored);
-        }
     }
 
     @Transactional
@@ -467,8 +471,8 @@ public class BudgetSetupService {
                 : displayed.multiply(BigDecimal.valueOf(12)).setScale(2, RoundingMode.HALF_UP);
         switch (kind == null ? "" : kind) {
             case "allocation" -> updateAllocationAmounts(year, month, monthlyPlan, parseIds(ids), stored);
-            case "publication" -> updatePublicationAmounts(parseIds(ids), MonthlySplit.annualFromShare(displayed));
-            case "travel" -> updateTravelAmounts(parseIds(ids), MonthlySplit.annualFromShare(displayed));
+            case "publication" -> updatePublicationMonth(year, month, publications(ids), displayed);
+            case "travel" -> updateTravelMonth(year, month, travelLines(ids), displayed);
             case "event" -> updateEventAmount(year, month, parseIds(ids), displayed);
             case "employee" -> {
                 List<Long> employeeIds = parseIds(ids);
@@ -481,7 +485,7 @@ public class BudgetSetupService {
                     syncEmployeeSalaryAllocations(employeeIds.get(0), annual);
                 }
             }
-            case "subcategory" -> updateSubcategoryAmount(ids, displayed);
+            case "subcategory" -> updateSubcategoryAmount(year, month, ids, displayed);
             default -> throw new IllegalArgumentException("Nieobsługiwana pozycja");
         }
     }
@@ -583,6 +587,250 @@ public class BudgetSetupService {
         budgetSubcategoryOrderRepository.save(entry);
     }
 
+    /**
+     * Rozpisuje planowany koszt pozycji po równo na 12 miesięcy (podana kwota najpierw zastępuje planowany koszt).
+     * {@code kind}: allocation (linie planu, także pensje), publication, travel, event, subcategory.
+     */
+    @Transactional
+    public void splitBudgetLineEvenly(int year, String kind, String ids, BigDecimal amount,
+                                      String parentRowKey, String rowKey) {
+        if (amount != null && amount.signum() >= 0) {
+            setBudgetLinePlannedAmount(year, kind, ids, amount, parentRowKey, rowKey);
+        }
+        switch (lineKind(kind)) {
+            case "allocation" -> splitAllocationsEvenly(year, annualLineRows(year, ids, true));
+            case "publication" -> {
+                List<Publication> rows = publications(ids);
+                rows.forEach(row -> {
+                    row.setPlannedCost(row.budgetPlannedOrCost());
+                    budgetMonthAmountRepository.deleteByFiscalYearAndKindAndRefKey(
+                            year, BudgetMonthAmount.PUBLICATION, String.valueOf(row.getId()));
+                });
+                publicationRepository.saveAll(rows);
+            }
+            case "travel" -> {
+                List<TravelBudgetLine> rows = travelLines(ids);
+                rows.forEach(row -> {
+                    row.setPlannedCost(row.budgetPlannedOrCost());
+                    budgetMonthAmountRepository.deleteByFiscalYearAndKindAndRefKey(
+                            year, BudgetMonthAmount.TRAVEL, String.valueOf(row.getId()));
+                });
+                travelBudgetLineRepository.saveAll(rows);
+            }
+            case "event" -> {
+                // Wydarzenie ma koszt w swoim miesiącu: dostaje cały planowany koszt.
+                List<PlannedEvent> rows = events(ids);
+                rows.forEach(row -> row.setPlannedCost(row.budgetPlannedOrCost()));
+                plannedEventRepository.saveAll(rows);
+            }
+            case "subcategory" -> {
+                BudgetSubcategoryOrder entry = subcategoryEntry(parentRowKey, rowKey);
+                entry.setMonthsAmount(entry.getPlannedAmount());
+                budgetSubcategoryOrderRepository.save(entry);
+                budgetMonthAmountRepository.deleteByFiscalYearAndKindAndRefKey(year, BudgetMonthAmount.SUBCATEGORY,
+                        entry.getParentRowKey() + "|" + entry.getRowKey());
+            }
+            default -> throw new IllegalArgumentException("Nieobsługiwana pozycja");
+        }
+    }
+
+    private void splitAllocationsEvenly(int year, List<CostAllocation> rows) {
+        // Miesiące dostają po równo planowany koszt; kwota roczna = suma miesięcy.
+        // Pensja: tylko miesiące okresu pracy (od–do), pozostałe 0.
+        boolean writeMonths = costAllocationRepository.existsMonthlyPlanForFiscalYear(year);
+        Set<Long> employeeIds = new HashSet<>();
+        for (CostAllocation annual : rows) {
+            annual.setAmount(annual.plannedOrAmount());
+            annual.setSplitToMonths(true);
+            List<Integer> months = isPersonnelAllocation(annual) && annual.getEmployee() != null
+                    ? annual.getEmployee().budgetMonths(year)
+                    : List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+            if (months.size() < 12) {
+                if (!writeMonths) {
+                    throw new IllegalArgumentException(
+                            "Budżet " + year + " nie ma planu miesięcznego — nie da się rozpisać pensji na część roku");
+                }
+                writeMonthShares(annual, months);
+            } else if (writeMonths) {
+                writeEvenMonthShares(annual);
+            } else {
+                costAllocationRepository.save(annual);
+            }
+            if (isPersonnelAllocation(annual) && annual.getEmployee() != null) {
+                employeeIds.add(annual.getEmployee().getId());
+            }
+        }
+        for (Long employeeId : employeeIds) {
+            refreshEmployeePlannedCost(employeeId, year);
+        }
+    }
+
+    /** Ustawia „Planowany Koszt” pozycji; miesiące zostają bez zmian. */
+    @Transactional
+    public void setBudgetLinePlannedAmount(int year, String kind, String ids, BigDecimal amount,
+                                           String parentRowKey, String rowKey) {
+        BigDecimal total = amount == null || amount.signum() < 0
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : amount.setScale(2, RoundingMode.HALF_UP);
+        switch (lineKind(kind)) {
+            case "allocation" -> {
+                List<CostAllocation> rows = annualLineRows(year, ids, true);
+                applyDistributedAmounts(rows.stream().map(CostAllocation::plannedOrAmount).toList(), total,
+                        (index, value) -> rows.get(index).setPlannedAmount(value));
+                costAllocationRepository.saveAll(rows);
+            }
+            case "publication" -> {
+                List<Publication> rows = publications(ids);
+                applyDistributedAmounts(rows.stream().map(Publication::budgetPlannedOrCost).toList(), total,
+                        (index, value) -> rows.get(index).setBudgetPlannedCost(value));
+                publicationRepository.saveAll(rows);
+            }
+            case "travel" -> {
+                List<TravelBudgetLine> rows = travelLines(ids);
+                applyDistributedAmounts(rows.stream().map(TravelBudgetLine::budgetPlannedOrCost).toList(), total,
+                        (index, value) -> rows.get(index).setBudgetPlannedCost(value));
+                travelBudgetLineRepository.saveAll(rows);
+            }
+            case "event" -> {
+                List<PlannedEvent> rows = events(ids);
+                applyDistributedAmounts(rows.stream().map(PlannedEvent::budgetPlannedOrCost).toList(), total,
+                        (index, value) -> rows.get(index).setBudgetPlannedCost(value));
+                plannedEventRepository.saveAll(rows);
+            }
+            case "subcategory" -> {
+                setSubcategoryPlannedAmount(parentRowKey, rowKey, total);
+                return;
+            }
+            default -> throw new IllegalArgumentException("Nieobsługiwana pozycja");
+        }
+        clearStructurePlannedAmount(parentRowKey, rowKey);
+    }
+
+    /** Kwota wpisana wcześniej przy pozycji struktury przestaje zasłaniać planowany koszt zapisany w linii. */
+    private void clearStructurePlannedAmount(String parentRowKey, String rowKey) {
+        String parent = normalize(parentRowKey);
+        String key = normalize(rowKey);
+        if (parent == null || key == null) {
+            return;
+        }
+        budgetSubcategoryOrderRepository.findByParentRowKeyAndRowKey(parent, key).ifPresent(entry -> {
+            if (entry.getPlannedAmount() != null) {
+                entry.setPlannedAmount(null);
+                budgetSubcategoryOrderRepository.save(entry);
+            }
+        });
+    }
+
+    /** Usuwa wydatek z planu: pozycje (i miesiące linii planu) przestają być aktywne. Pensji tu nie usuwa się. */
+    @Transactional
+    public void deleteBudgetLine(int year, String kind, String ids, String lineKey) {
+        switch (lineKind(kind)) {
+            case "allocation" -> {
+                List<CostAllocation> rows = annualLineRows(year, ids, false);
+                List<CostAllocation> toDeactivate = new ArrayList<>();
+                for (CostAllocation row : costAllocationRepository.findAllPlanAllocationsByFiscalYear(year)) {
+                    if (rows.stream().anyMatch(annual -> annual.getId().equals(row.getId()) || sameLine(annual, row))) {
+                        row.setActive(false);
+                        toDeactivate.add(row);
+                    }
+                }
+                costAllocationRepository.saveAll(toDeactivate);
+            }
+            case "publication" -> {
+                List<Publication> rows = publications(ids);
+                rows.forEach(row -> row.setActive(false));
+                publicationRepository.saveAll(rows);
+            }
+            case "travel" -> {
+                List<TravelBudgetLine> rows = travelLines(ids);
+                rows.forEach(row -> row.setActive(false));
+                travelBudgetLineRepository.saveAll(rows);
+            }
+            case "event" -> {
+                List<PlannedEvent> rows = events(ids);
+                rows.forEach(row -> row.setActive(false));
+                plannedEventRepository.saveAll(rows);
+            }
+            default -> throw new IllegalArgumentException("Nieobsługiwana pozycja");
+        }
+        String line = normalize(lineKey);
+        if (line != null) {
+            budgetLineAssignmentRepository.findByLineKey(line).ifPresent(budgetLineAssignmentRepository::delete);
+        }
+    }
+
+    /** Okres pracy pracownika w budżecie (od–do); puste = cały rok. */
+    @Transactional
+    public void setEmployeeBudgetPeriod(Long employeeId, int year, java.time.LocalDate from, java.time.LocalDate to) {
+        // Początek / koniec roku znaczy „bez ograniczenia”, żeby okres nie odcinał innych lat.
+        if (from != null && from.equals(java.time.LocalDate.of(year, 1, 1))) {
+            from = null;
+        }
+        if (to != null && to.equals(java.time.LocalDate.of(year, 12, 31))) {
+            to = null;
+        }
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new IllegalArgumentException("Data „do” jest wcześniejsza niż „od”");
+        }
+        Employee employee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new IllegalArgumentException("Pracownik nie istnieje"));
+        employee.setBudgetFrom(from);
+        employee.setBudgetTo(to);
+        employeeRepository.save(employee);
+    }
+
+    private static String lineKind(String kind) {
+        return kind == null || kind.isBlank() ? "allocation" : kind.trim();
+    }
+
+    private List<Publication> publications(String ids) {
+        return parseIds(ids).stream()
+                .map(id -> publicationRepository.findById(id)
+                        .orElseThrow(() -> new IllegalArgumentException("Publikacja nie istnieje")))
+                .toList();
+    }
+
+    private List<TravelBudgetLine> travelLines(String ids) {
+        return parseIds(ids).stream()
+                .map(id -> travelBudgetLineRepository.findById(id)
+                        .orElseThrow(() -> new IllegalArgumentException("Pozycja podróży nie istnieje")))
+                .toList();
+    }
+
+    private List<PlannedEvent> events(String ids) {
+        return parseIds(ids).stream()
+                .map(id -> plannedEventRepository.findById(id)
+                        .orElseThrow(() -> new IllegalArgumentException("Wydarzenie nie istnieje")))
+                .toList();
+    }
+
+    private BudgetSubcategoryOrder subcategoryEntry(String parentRowKey, String rowKey) {
+        String parent = normalize(parentRowKey);
+        String key = normalize(rowKey);
+        if (parent == null || key == null) {
+            throw new IllegalArgumentException("Brak identyfikatora pozycji");
+        }
+        return budgetSubcategoryOrderRepository.findByParentRowKeyAndRowKey(parent, key)
+                .orElseThrow(() -> new IllegalArgumentException("Pozycja nie ma planowanego kosztu"));
+    }
+
+    private List<CostAllocation> annualLineRows(int year, String ids, boolean allowPersonnel) {
+        List<CostAllocation> rows = new ArrayList<>();
+        for (Long id : parseIds(ids)) {
+            CostAllocation row = costAllocationRepository.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("Pozycja budżetowa nie istnieje"));
+            if (!Integer.valueOf(year).equals(row.getFiscalYear()) || row.getExpenditure() != null
+                    || row.getPlanMonth() != null) {
+                throw new IllegalArgumentException("Pozycja nie należy do planu rocznego " + year);
+            }
+            if (!allowPersonnel && isPersonnelAllocation(row)) {
+                throw new IllegalArgumentException("Pracowników usuwasz w zakładce Pracownicy");
+            }
+            rows.add(row);
+        }
+        return rows;
+    }
+
     private void updateAllocationAmounts(int year,
                                          int month,
                                          boolean monthlyPlan,
@@ -632,24 +880,65 @@ public class BudgetSetupService {
         }
     }
 
-    private void updatePublicationAmounts(List<Long> ids, BigDecimal storedTotal) {
-        List<Publication> rows = ids.stream()
-                .map(id -> publicationRepository.findById(id)
-                        .orElseThrow(() -> new IllegalArgumentException("Publikacja nie istnieje")))
-                .toList();
-        applyDistributedAmounts(rows.stream().map(Publication::getPlannedCost).toList(), storedTotal, (index, value) ->
-                rows.get(index).setPlannedCost(value));
+    /** Edycja miesiąca publikacji: zmienia tylko ten miesiąc; kwota roczna (podstawa miesięcy) = suma miesięcy. */
+    private void updatePublicationMonth(int year, int month, List<Publication> rows, BigDecimal displayed) {
+        List<String> refs = rows.stream().map(row -> String.valueOf(row.getId())).toList();
+        List<BigDecimal> sums = writeMonthAmounts(year, month, BudgetMonthAmount.PUBLICATION, refs,
+                rows.stream().map(Publication::getPlannedCost).toList(), displayed);
+        for (int i = 0; i < rows.size(); i++) {
+            rows.get(i).setPlannedCost(sums.get(i));
+        }
         publicationRepository.saveAll(rows);
     }
 
-    private void updateTravelAmounts(List<Long> ids, BigDecimal storedTotal) {
-        List<TravelBudgetLine> rows = ids.stream()
-                .map(id -> travelBudgetLineRepository.findById(id)
-                        .orElseThrow(() -> new IllegalArgumentException("Pozycja podróży nie istnieje")))
-                .toList();
-        applyDistributedAmounts(rows.stream().map(TravelBudgetLine::getPlannedCost).toList(), storedTotal, (index, value) ->
-                rows.get(index).setPlannedCost(value));
+    private void updateTravelMonth(int year, int month, List<TravelBudgetLine> rows, BigDecimal displayed) {
+        List<String> refs = rows.stream().map(row -> String.valueOf(row.getId())).toList();
+        List<BigDecimal> sums = writeMonthAmounts(year, month, BudgetMonthAmount.TRAVEL, refs,
+                rows.stream().map(TravelBudgetLine::getPlannedCost).toList(), displayed);
+        for (int i = 0; i < rows.size(); i++) {
+            rows.get(i).setPlannedCost(sums.get(i));
+        }
         travelBudgetLineRepository.saveAll(rows);
+    }
+
+    /**
+     * Zapisuje kwotę jednego miesiąca pozycji (kilka pozycji dzieli ją proporcjonalnie). Pozycja bez zapisów
+     * w tym roku dostaje najpierw 12 miesięcy z równego podziału kwoty rocznej, więc inne miesiące się nie zmieniają.
+     * Zwraca nową sumę 12 miesięcy każdej pozycji.
+     */
+    private List<BigDecimal> writeMonthAmounts(int year, int month, String kind, List<String> refs,
+                                               List<BigDecimal> annualBases, BigDecimal displayed) {
+        List<Map<Integer, BudgetMonthAmount>> byRef = new ArrayList<>();
+        for (int i = 0; i < refs.size(); i++) {
+            Map<Integer, BudgetMonthAmount> months = new HashMap<>();
+            budgetMonthAmountRepository.findByFiscalYearAndKindAndRefKeyOrderByPlanMonthAsc(year, kind, refs.get(i))
+                    .forEach(entry -> months.put(entry.getPlanMonth(), entry));
+            if (months.size() < 12) {
+                List<BigDecimal> shares = MonthlySplit.shares(annualBases.get(i));
+                for (int m = 1; m <= 12; m++) {
+                    if (!months.containsKey(m)) {
+                        BudgetMonthAmount entry = new BudgetMonthAmount();
+                        entry.setFiscalYear(year);
+                        entry.setKind(kind);
+                        entry.setRefKey(refs.get(i));
+                        entry.setPlanMonth(m);
+                        entry.setAmount(shares.get(m - 1));
+                        months.put(m, entry);
+                    }
+                }
+            }
+            byRef.add(months);
+        }
+        List<BudgetMonthAmount> edited = byRef.stream().map(months -> months.get(month)).toList();
+        applyDistributedAmounts(edited.stream().map(BudgetMonthAmount::getAmount).toList(), displayed,
+                (index, value) -> edited.get(index).setAmount(value));
+        List<BigDecimal> sums = new ArrayList<>();
+        for (Map<Integer, BudgetMonthAmount> months : byRef) {
+            budgetMonthAmountRepository.saveAll(months.values());
+            sums.add(months.values().stream().map(BudgetMonthAmount::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP));
+        }
+        return sums;
     }
 
     private void updateEventAmount(int year, int month, List<Long> ids, BigDecimal displayed) {
@@ -677,7 +966,7 @@ public class BudgetSetupService {
         employeeRepository.save(employee);
     }
 
-    private void updateSubcategoryAmount(String ids, BigDecimal displayed) {
+    private void updateSubcategoryAmount(int year, int month, String ids, BigDecimal displayed) {
         if (ids == null) {
             throw new IllegalArgumentException("Brak pozycji do zapisu");
         }
@@ -687,11 +976,18 @@ public class BudgetSetupService {
         }
         String parent = ids.substring(0, separator);
         String rowKey = ids.substring(separator + 1);
-        BigDecimal stored = displayed;
-        if (MonthlySplit.isSalaryOrAdminRow(parent) || MonthlySplit.isSalaryOrAdminRow(rowKey)) {
-            stored = MonthlySplit.annualFromShare(displayed);
+        // Edycja miesiąca zmienia tylko ten miesiąc, nie planowany koszt.
+        BudgetSubcategoryOrder entry = budgetSubcategoryOrderRepository
+                .findByParentRowKeyAndRowKey(parent, rowKey)
+                .orElse(null);
+        if (entry == null) {
+            setSubcategoryPlannedAmount(parent, rowKey, null);
+            entry = subcategoryEntry(parent, rowKey);
         }
-        setSubcategoryPlannedAmount(parent, rowKey, stored);
+        List<BigDecimal> sums = writeMonthAmounts(year, month, BudgetMonthAmount.SUBCATEGORY,
+                List.of(parent + "|" + rowKey), java.util.Collections.singletonList(entry.monthsOrPlanned()), displayed);
+        entry.setMonthsAmount(sums.get(0));
+        budgetSubcategoryOrderRepository.save(entry);
     }
 
     private void syncEmployeeSalaryForYear(Long employeeId, BigDecimal annualAmount, int year) {
@@ -736,34 +1032,6 @@ public class BudgetSetupService {
         return created;
     }
 
-    private void redistributeSalaryOrAdminStructure(int year, String parent, String rowKey, BigDecimal annualAmount) {
-        List<CostAllocation> annuals = costAllocationRepository.findAnnualPlanAllocationsByFiscalYear(year).stream()
-                .filter(row -> matchesStructureRow(row, parent, rowKey))
-                .toList();
-        if (annuals.isEmpty()) {
-            return;
-        }
-        List<CostAllocation> rows = new ArrayList<>(annuals);
-        applyDistributedAmounts(rows.stream().map(CostAllocation::getAmount).toList(), annualAmount, (index, value) ->
-                rows.get(index).setAmount(value));
-        boolean writeMonths = costAllocationRepository.existsMonthlyPlanForFiscalYear(year);
-        Set<Long> employeeIds = new HashSet<>();
-        for (CostAllocation annual : rows) {
-            annual.setSplitToMonths(true);
-            if (writeMonths) {
-                writeEvenMonthShares(annual);
-            } else {
-                costAllocationRepository.save(annual);
-            }
-            if (isPersonnelAllocation(annual) && annual.getEmployee() != null) {
-                employeeIds.add(annual.getEmployee().getId());
-            }
-        }
-        for (Long employeeId : employeeIds) {
-            refreshEmployeePlannedCost(employeeId, year);
-        }
-    }
-
     private void applyEqualMonthlyShare(CostAllocation anchor, BigDecimal monthlyShare) {
         BigDecimal share = monthlyShare == null || monthlyShare.signum() < 0
                 ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
@@ -800,6 +1068,32 @@ public class BudgetSetupService {
             }
         }
         costAllocationRepository.saveAll(months);
+    }
+
+    /** Kwota roczna po równo na podane miesiące; pozostałe miesiące 0. */
+    private void writeMonthShares(CostAllocation annual, List<Integer> months) {
+        List<BigDecimal> shares = months.isEmpty() ? List.of() : MonthlySplit.sharesAcross(annual.getAmount(), months.size());
+        costAllocationRepository.save(annual);
+        Map<Integer, CostAllocation> byMonth = new HashMap<>();
+        for (CostAllocation row : costAllocationRepository.findAllPlanAllocationsByFiscalYear(annual.getFiscalYear())) {
+            if (row.getPlanMonth() != null && sameLine(annual, row)) {
+                byMonth.put(row.getPlanMonth(), row);
+            }
+        }
+        List<CostAllocation> result = new ArrayList<>();
+        for (int month = 1; month <= 12; month++) {
+            int index = months.indexOf(month);
+            BigDecimal share = index >= 0 ? shares.get(index) : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            CostAllocation monthRow = byMonth.get(month);
+            if (monthRow == null) {
+                result.add(copyPlanLine(annual, month, share));
+            } else {
+                monthRow.setAmount(share);
+                monthRow.setSplitToMonths(true);
+                result.add(monthRow);
+            }
+        }
+        costAllocationRepository.saveAll(result);
     }
 
     private void writeEvenMonthShares(CostAllocation annual) {
@@ -913,44 +1207,6 @@ public class BudgetSetupService {
         copy.setSplitToMonths(true);
         copy.setActive(true);
         return costAllocationRepository.save(copy);
-    }
-
-    private boolean matchesStructureRow(CostAllocation allocation, String parent, String rowKey) {
-        if (!isSalaryOrAdminAllocation(allocation)) {
-            return false;
-        }
-        if ("koszty-administracyjne".equals(parent)) {
-            String group = allocation.getAdminGroup();
-            return switch (rowKey) {
-                case "admin-biuro" -> "BIURO".equals(group);
-                case "admin-pozostale" -> group == null || "POZOSTALE".equals(group);
-                case "admin-wynagrodzenia" -> "WYNAGRODZENIA".equals(group);
-                default -> false;
-            };
-        }
-        if (rowKey != null && rowKey.startsWith("employee-") && isPersonnelAllocation(allocation)) {
-            try {
-                return matchesEmployee(allocation, Long.valueOf(rowKey.substring("employee-".length())));
-            } catch (NumberFormatException ex) {
-                return false;
-            }
-        }
-        String label = allocation.getLabel() != null ? allocation.getLabel() : "";
-        return rowKey != null && rowKey.equals(structureLineKey(parent, label));
-    }
-
-    private static String structureLineKey(String parentRowKey, String label) {
-        String slug = label.trim()
-                .toLowerCase()
-                .replace('ą', 'a').replace('ć', 'c').replace('ę', 'e')
-                .replace('ł', 'l').replace('ń', 'n').replace('ó', 'o')
-                .replace('ś', 's').replace('ź', 'z').replace('ż', 'z')
-                .replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("^-|-$", "");
-        if (slug.isBlank()) {
-            slug = "pozycja";
-        }
-        return parentRowKey + "-line-" + slug;
     }
 
     private boolean isSalaryOrAdminAllocation(CostAllocation allocation) {
@@ -1106,6 +1362,14 @@ public class BudgetSetupService {
             case "KOSZT_SPRZ" -> "sprzet";
             default -> code;
         };
+    }
+
+    @Transactional
+    public void freezeAnnualPlannedAmounts() {
+        costAllocationRepository.freezeAnnualPlannedAmounts();
+        publicationRepository.freezeBudgetPlannedCosts();
+        travelBudgetLineRepository.freezeBudgetPlannedCosts();
+        plannedEventRepository.freezeBudgetPlannedCosts();
     }
 
     @Transactional

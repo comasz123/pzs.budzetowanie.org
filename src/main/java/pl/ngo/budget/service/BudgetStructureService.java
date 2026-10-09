@@ -29,9 +29,12 @@ public class BudgetStructureService {
 
     private final BudgetMatrixService budgetMatrixService;
     private final BudgetSubcategoryOrderRepository budgetSubcategoryOrderRepository;
+    private final pl.ngo.budget.repository.EmployeeRepository employeeRepository;
 
     public BudgetStructureService(BudgetMatrixService budgetMatrixService,
-                                  BudgetSubcategoryOrderRepository budgetSubcategoryOrderRepository) {
+                                  BudgetSubcategoryOrderRepository budgetSubcategoryOrderRepository,
+                                  pl.ngo.budget.repository.EmployeeRepository employeeRepository) {
+        this.employeeRepository = employeeRepository;
         this.budgetMatrixService = budgetMatrixService;
         this.budgetSubcategoryOrderRepository = budgetSubcategoryOrderRepository;
     }
@@ -50,7 +53,7 @@ public class BudgetStructureService {
         BudgetStructureNodeDto node = new BudgetStructureNodeDto();
         node.setRowKey(row.getRowKey());
         node.setName(row.getItemName());
-        node.setEditable(!WYNAGRODZENIA_ROW_KEY.equals(row.getRowKey()));
+        node.setEditable(!isPersonnelRow(row.getRowKey()) && breadcrumbs.stream().noneMatch(b -> isPersonnelRow(b.getRowKey())));
         BudgetDashboardDto.CategoryOrderInfo ownOrder = dashboard.getCategoryOrderByRowKey() != null
                 ? dashboard.getCategoryOrderByRowKey().get(row.getRowKey()) : null;
         node.setCategoryTemplateId(ownOrder != null && !BUILT_IN_ROW_KEYS.contains(row.getRowKey())
@@ -70,8 +73,57 @@ public class BudgetStructureService {
         BudgetDashboardDto.BudgetItemRowDto row = findRowByKey(dashboard.getRows(), rowKey.trim(), new ArrayList<>())
                 .orElseThrow(() -> new IllegalArgumentException("Kategoria nie istnieje: " + rowKey));
         node.setItems(buildTree(row, dashboard.getCategoryOrderByRowKey(), 0));
+        applyEmployeePeriods(node.getItems(), fiscalYear);
         node.setMoveTargets(buildMoveTargets(dashboard.getRows(), null));
         return node;
+    }
+
+    /**
+     * Wypełnia kolumnę „Planowany Koszt” widoku rocznego kwotami ze struktury budżetu:
+     * pozycja bez zawartości ma kwotę wpisaną (albo roczną z przygotowania budżetu), kategoria — sumę zawartości.
+     * Obok liczy „Pokrycie w miesiącach”: planowany koszt minus suma miesięcy.
+     */
+    @Transactional(readOnly = true)
+    public void applyPlannedCosts(BudgetDashboardDto dashboard) {
+        if (dashboard == null || dashboard.getRows() == null) {
+            return;
+        }
+        Map<String, BigDecimal> plannedByKey = new LinkedHashMap<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (BudgetDashboardDto.BudgetItemRowDto row : dashboard.getRows()) {
+            List<BudgetStructureItemDto> items = buildTree(row, dashboard.getCategoryOrderByRowKey(), 0);
+            BigDecimal planned = items.isEmpty()
+                    ? (row.getTotalCost() != null ? row.getTotalCost() : BigDecimal.ZERO)
+                    : sumPlanned(items, plannedByKey);
+            plannedByKey.put(row.getRowKey(), planned);
+            total = total.add(planned);
+        }
+        if (dashboard.getDisplayRows() != null) {
+            for (BudgetDashboardDto.BudgetDisplayRowDto display : dashboard.getDisplayRows()) {
+                BigDecimal planned = display.getRowKey() != null
+                        ? plannedByKey.get(display.getRowKey())
+                        : (display.getLineKey() != null ? plannedByKey.get(display.getLineKey()) : null);
+                display.setPlannedCost(planned);
+                BigDecimal months = display.getMonthsCost() != null ? display.getMonthsCost()
+                        : (display.getTotalCost() != null ? display.getTotalCost() : BigDecimal.ZERO);
+                display.setMonthsGap((planned != null ? planned : BigDecimal.ZERO).subtract(months));
+            }
+        }
+        dashboard.setTotalPlannedCost(total);
+        dashboard.setTotalMonthsGap(total.subtract(
+                dashboard.getTotalCost() != null ? dashboard.getTotalCost() : BigDecimal.ZERO));
+    }
+
+    private static BigDecimal sumPlanned(List<BudgetStructureItemDto> items, Map<String, BigDecimal> plannedByKey) {
+        BigDecimal sum = BigDecimal.ZERO;
+        for (BudgetStructureItemDto item : items) {
+            BigDecimal planned = item.getChildren() != null && !item.getChildren().isEmpty()
+                    ? sumPlanned(item.getChildren(), plannedByKey)
+                    : (item.getPlannedAmount() != null ? item.getPlannedAmount() : BigDecimal.ZERO);
+            plannedByKey.put(item.isExpense() && item.getLineKey() != null ? item.getLineKey() : item.getRowKey(), planned);
+            sum = sum.add(planned);
+        }
+        return sum;
     }
 
     /** Wszystkie kategorie i podkategorie budżetu (bez pracowników i wynagrodzeń) jako cele przeniesienia wydatku. */
@@ -102,7 +154,7 @@ public class BudgetStructureService {
             return items;
         }
         for (BudgetStructureItemDto item : items) {
-            if (!item.isNavigable()) {
+            if (item.isExpense()) {
                 continue;
             }
             parent.getChildren().stream()
@@ -111,6 +163,25 @@ public class BudgetStructureService {
                     .ifPresent(child -> item.setChildren(buildTree(child, order, depth + 1)));
         }
         return items;
+    }
+
+    /** Wiersze pracowników dostają okres pracy (domyślnie cały rok) do rozpisu pensji. */
+    private void applyEmployeePeriods(List<BudgetStructureItemDto> items, int fiscalYear) {
+        for (BudgetStructureItemDto item : items) {
+            String key = item.getRowKey();
+            if (key != null && key.matches("employee-\\d+")) {
+                employeeRepository.findById(Long.valueOf(key.substring("employee-".length()))).ifPresent(employee -> {
+                    item.setEmployeeId(employee.getId());
+                    item.setPeriodFrom(employee.getBudgetFrom() != null
+                            ? employee.getBudgetFrom() : java.time.LocalDate.of(fiscalYear, 1, 1));
+                    item.setPeriodTo(employee.getBudgetTo() != null
+                            ? employee.getBudgetTo() : java.time.LocalDate.of(fiscalYear, 12, 31));
+                });
+            }
+            if (item.getChildren() != null) {
+                applyEmployeePeriods(item.getChildren(), fiscalYear);
+            }
+        }
     }
 
     private static boolean isEvenMonthlySplit(String rowKey, List<BudgetDashboardDto.BudgetItemRowDto> ancestors) {
@@ -180,7 +251,14 @@ public class BudgetStructureService {
                 item.setDeletable(false);
                 item.setExpense(true);
                 item.setLineKey(allocation.getLineKey() != null ? allocation.getLineKey() : allocRowKey);
-                item.setPlannedAmount(resolvePlannedAmount(stored, allocation.getAmount()));
+                if (LINE_KINDS.contains(allocation.getAmountEditKind()) && allocation.getAmountEditIds() != null
+                        && !allocation.getAmountEditIds().isBlank()) {
+                    item.setEditKind(allocation.getAmountEditKind());
+                    item.setAllocationIds(allocation.getAmountEditIds());
+                }
+                item.setPersonnel(isPersonnelRow(parentRowKey));
+                item.setPlannedAmount(resolvePlannedAmount(stored,
+                        allocation.getPlannedTotal() != null ? allocation.getPlannedTotal() : allocation.getAmount()));
                 items.add(item);
             }
         }
@@ -196,10 +274,18 @@ public class BudgetStructureService {
         item.setRowKey(child.getRowKey());
         item.setName(child.getItemName());
         item.setParentRowKey(parentRowKey);
-        item.setNavigable(isNavigable(child.getRowKey()));
-        item.setRenamable(true);
-        item.setDeletable(isDeletable(child.getRowKey(), parentRowKey, stored, categoryOrderByRowKey));
+        boolean employee = child.getRowKey() != null && child.getRowKey().startsWith("employee-");
+        item.setNavigable(!employee && isNavigable(child.getRowKey()));
+        item.setRenamable(!employee);
+        item.setDeletable(!employee && isDeletable(child.getRowKey(), parentRowKey, stored, categoryOrderByRowKey));
+        item.setPersonnel(employee || isPersonnelRow(parentRowKey));
         item.setPlannedAmount(resolvePlannedAmount(stored, child.getTotalCost()));
+        boolean empty = (child.getChildren() == null || child.getChildren().isEmpty())
+                && (child.getAllocations() == null || child.getAllocations().isEmpty());
+        if (empty && !employee) {
+            // Pusta podkategoria: planowany koszt wpisany przy niej, „12” rozpisuje go na miesiące.
+            item.setEditKind("subcategory");
+        }
         if (categoryOrderByRowKey != null && child.getRowKey() != null) {
             BudgetDashboardDto.CategoryOrderInfo order = categoryOrderByRowKey.get(child.getRowKey());
             if (order != null) {
@@ -214,6 +300,13 @@ public class BudgetStructureService {
             return stored.getPlannedAmount();
         }
         return fallback != null && fallback.signum() > 0 ? fallback : null;
+    }
+
+    private static final java.util.Set<String> LINE_KINDS = java.util.Set.of("allocation", "publication", "travel", "event");
+
+    private static boolean isPersonnelRow(String rowKey) {
+        return rowKey != null && (WYNAGRODZENIA_ROW_KEY.equals(rowKey) || ADMIN_WYNAGRODZENIA_KEY.equals(rowKey)
+                || rowKey.startsWith("employee-"));
     }
 
     private static boolean isNavigable(String rowKey) {

@@ -10,6 +10,11 @@ import java.util.List;
 
 @Repository
 public interface TravelBudgetLineRepository extends JpaRepository<TravelBudgetLine, Long> {
+
+    /** Planowany koszt budżetu z obecnej kwoty (jednorazowo, dla pozycji sprzed tej kolumny). */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE TravelBudgetLine p SET p.budgetPlannedCost = p.plannedCost WHERE p.budgetPlannedCost IS NULL")
+    int freezeBudgetPlannedCosts();
     List<TravelBudgetLine> findByActiveTrueOrderByScopeAscExpenseTypeAsc();
 
     @Modifying

@@ -14,23 +14,41 @@
             <span th:unless="${item.renamable}" class="flex-grow-1 px-2"
                   th:classappend="${item.expense} ? 'structure-expense-name' : 'structure-category-name'"
                   th:text="${item.name}">Pozycja</span>
-            <select th:if="${item.expense}" class="form-select form-select-sm structure-move"
+            <select th:if="${item.expense && !item.personnel}" class="form-select form-select-sm structure-move"
                     style="width: 22rem; max-width: 100%;" title="Przenieś wydatek do innej kategorii"
                     th:attr="data-line-key=${item.lineKey}">
                 <option th:each="target : ${structureNode.moveTargets}"
                         th:value="${target.rowKey}" th:text="${target.name}"
                         th:selected="${target.rowKey == item.parentRowKey}">Kategoria</option>
             </select>
+            <div th:if="${item.employeeId != null}" class="d-flex align-items-center gap-1 small structure-period"
+                 th:attr="data-employee-id=${item.employeeId}"
+                 title="Okres pracy w budżecie: przycisk 12 rozpisuje pensję tylko na te miesiące">
+                <span class="text-muted">od</span>
+                <input type="date" class="form-control form-control-sm structure-period-from" style="width: 9.5rem;"
+                       th:value="${item.periodFrom}"/>
+                <span class="text-muted">do</span>
+                <input type="date" class="form-control form-control-sm structure-period-to" style="width: 9.5rem;"
+                       th:value="${item.periodTo}"/>
+            </div>
             <div class="input-group input-group-sm" style="width: 9.5rem;">
                 <input type="text"
                        inputmode="decimal"
                        class="form-control text-end structure-amount money-input"
                        placeholder="0,00"
-                       th:disabled="${!#lists.isEmpty(item.children)}"
-                       th:attr="data-parent-row-key=${item.parentRowKey}, data-row-key=${item.rowKey}"
+                       th:disabled="${!#lists.isEmpty(item.children) || (item.personnel && !item.expense)}"
+                       th:attr="data-parent-row-key=${item.parentRowKey}, data-row-key=${item.rowKey}, data-ids=${item.allocationIds}, data-kind=${item.editKind != 'subcategory' ? item.editKind : null}"
                        th:value="${item.plannedAmount != null ? #numbers.formatDecimal(item.plannedAmount, 1, 'WHITESPACE', 2, 'COMMA') : ''}"/>
                 <span class="input-group-text">zł</span>
             </div>
+            <button th:if="${item.editKind != null}" type="button"
+                    class="btn btn-outline-secondary btn-sm structure-split12"
+                    title="Rozpisz planowany koszt po równo na 12 miesięcy"
+                    th:attr="data-kind=${item.editKind}, data-ids=${item.allocationIds}, data-parent-row-key=${item.parentRowKey}, data-row-key=${item.rowKey}">12</button>
+            <button th:if="${item.expense && item.editKind != null && !item.personnel}" type="button"
+                    class="btn btn-outline-danger btn-sm structure-line-delete"
+                    title="Usuń wydatek"
+                    th:attr="data-kind=${item.editKind}, data-ids=${item.allocationIds}, data-line-key=${item.lineKey}">×</button>
             <button th:if="${item.navigable}" type="button"
                     class="btn btn-outline-secondary btn-sm structure-add-toggle"
                     title="Dodaj podkategorię">＋</button>

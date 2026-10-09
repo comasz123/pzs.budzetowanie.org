@@ -35,6 +35,15 @@ public class BudgetSubcategoryOrder {
     @Column(name = "has_subcategories", nullable = false)
     private boolean hasSubcategories = true;
 
+    /** „Planowany Koszt” pozycji (roczny, wpisany w edycji budżetu). */
     @Column(name = "planned_amount", precision = 12, scale = 2)
     private java.math.BigDecimal plannedAmount;
+
+    /** Roczna kwota rozpisana na miesiące (po równo); null = jak planowany koszt (dane sprzed tej kolumny). */
+    @Column(name = "months_amount", precision = 12, scale = 2)
+    private java.math.BigDecimal monthsAmount;
+
+    public java.math.BigDecimal monthsOrPlanned() {
+        return monthsAmount != null ? monthsAmount : plannedAmount;
+    }
 }

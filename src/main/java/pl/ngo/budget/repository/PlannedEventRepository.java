@@ -11,6 +11,11 @@ import java.util.List;
 
 @Repository
 public interface PlannedEventRepository extends JpaRepository<PlannedEvent, Long> {
+
+    /** Planowany koszt budżetu z obecnej kwoty (jednorazowo, dla pozycji sprzed tej kolumny). */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE PlannedEvent p SET p.budgetPlannedCost = p.plannedCost WHERE p.budgetPlannedCost IS NULL")
+    int freezeBudgetPlannedCosts();
     List<PlannedEvent> findByActiveTrueOrderByEventDateAscTitleAsc();
 
     @Modifying

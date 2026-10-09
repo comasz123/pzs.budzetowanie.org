@@ -18,6 +18,10 @@ import java.util.Map;
 public class BudgetDashboardDto {
 
     private BigDecimal totalCost = BigDecimal.ZERO;
+    /** Suma kwot „Planowany Koszt” ze struktury budżetu (tylko widok roczny planu). */
+    private BigDecimal totalPlannedCost;
+    /** Planowany koszt razem minus suma miesięcy razem. */
+    private BigDecimal totalMonthsGap;
     private BigDecimal totalGrantCoverage = BigDecimal.ZERO;
     private BigDecimal balance = BigDecimal.ZERO;
 
@@ -82,6 +86,14 @@ public class BudgetDashboardDto {
         private boolean amountEditable;
         private String amountEditKind;
         private String amountEditIds;
+        /** Klucz linii wydatku (wiersze alokacji, które nie mają rowKey). */
+        private String lineKey;
+        /** Kwota „Planowany Koszt” wpisana w strukturze budżetu. */
+        private BigDecimal plannedCost;
+        /** Suma kosztu z miesięcy (dla linii wydatków różna od kwoty rocznej w {@code totalCost}). */
+        private BigDecimal monthsCost;
+        /** „Pokrycie w miesiącach”: planowany koszt minus suma miesięcy; zero = całość rozpisana. */
+        private BigDecimal monthsGap;
     }
 
     @Getter

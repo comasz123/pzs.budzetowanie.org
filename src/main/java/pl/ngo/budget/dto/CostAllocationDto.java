@@ -30,4 +30,8 @@ public class CostAllocationDto {
     private String amountEditIds;
     /** Klucz naturalny linii wydatku (do przenoszenia między kategoriami). */
     private String lineKey;
+    /** Widok roczny: suma kwot linii z dwunastu miesięcy (amount to kwota roczna planu). */
+    private BigDecimal monthsTotal;
+    /** Planowany koszt linii (stała kwota planu rocznego). */
+    private BigDecimal plannedTotal;
 }

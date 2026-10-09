@@ -46,6 +46,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -125,6 +126,7 @@ public class BudgetMatrixService {
     private final BudgetSubcategoryOrderRepository budgetSubcategoryOrderRepository;
     private final pl.ngo.budget.repository.BudgetLineAssignmentRepository budgetLineAssignmentRepository;
     private final GrantBudgetService grantBudgetService;
+    private final pl.ngo.budget.repository.BudgetMonthAmountRepository budgetMonthAmountRepository;
 
     public BudgetMatrixService(GrantRepository grantRepository,
                                ExpenditureRepository expenditureRepository,
@@ -136,7 +138,9 @@ public class BudgetMatrixService {
                                BudgetItemTemplateRepository budgetItemTemplateRepository,
                                BudgetSubcategoryOrderRepository budgetSubcategoryOrderRepository,
                                pl.ngo.budget.repository.BudgetLineAssignmentRepository budgetLineAssignmentRepository,
-                               GrantBudgetService grantBudgetService) {
+                               GrantBudgetService grantBudgetService,
+                               pl.ngo.budget.repository.BudgetMonthAmountRepository budgetMonthAmountRepository) {
+        this.budgetMonthAmountRepository = budgetMonthAmountRepository;
         this.budgetLineAssignmentRepository = budgetLineAssignmentRepository;
         this.grantRepository = grantRepository;
         this.expenditureRepository = expenditureRepository;
@@ -327,11 +331,40 @@ public class BudgetMatrixService {
             row.setBalance(cost.subtract(row.getOverallCoverage()));
         }
         rebalanceSalaryRemainders(year.getRows());
+        applyMonthsTotalsToLines(yearRows, months);
         year.setTotalCost(totalCost);
         year.setTotalGrantCoverage(totalCoverage);
         year.setTotalCoverageByGrant(totalByGrant);
         year.setBalance(totalCost.subtract(totalCoverage));
         year.setDisplayRows(flattenRowsForDisplay(year.getRows(), year.getCategoryOrderByRowKey()));
+    }
+
+    /** Linie wydatków roku mają kwotę roczną planu; obok zapisuje się sumę tej linii z dwunastu miesięcy. */
+    private void applyMonthsTotalsToLines(Map<String, BudgetItemRowDto> yearRows, List<BudgetDashboardDto> months) {
+        Map<String, BigDecimal> byLine = new LinkedHashMap<>();
+        for (BudgetDashboardDto month : months) {
+            Map<String, BudgetItemRowDto> monthRows = new LinkedHashMap<>();
+            indexRows(month.getRows(), monthRows);
+            for (BudgetItemRowDto row : monthRows.values()) {
+                if (row.getAllocations() == null) {
+                    continue;
+                }
+                for (CostAllocationDto dto : row.getAllocations()) {
+                    if (dto.getLineKey() != null && dto.getAmount() != null) {
+                        byLine.merge(dto.getLineKey(), dto.getAmount(), BigDecimal::add);
+                    }
+                }
+            }
+        }
+        for (BudgetItemRowDto row : yearRows.values()) {
+            if (row.getAllocations() == null) {
+                continue;
+            }
+            for (CostAllocationDto dto : row.getAllocations()) {
+                BigDecimal sum = dto.getLineKey() != null ? byLine.get(dto.getLineKey()) : null;
+                dto.setMonthsTotal((sum != null ? sum : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+            }
+        }
     }
 
     /**
@@ -1049,9 +1082,11 @@ public class BudgetMatrixService {
             BudgetDashboardDto.BudgetDisplayRowDto display = new BudgetDashboardDto.BudgetDisplayRowDto();
             display.setDepth(depth);
             display.setItemName(allocation.getItemName());
+            display.setLineKey(allocation.getLineKey());
             display.setCategoryRootRowKey(categoryRootRowKey);
             display.setLinkable(false);
             display.setTotalCost(allocation.getAmount() != null ? allocation.getAmount() : BigDecimal.ZERO);
+            display.setMonthsCost(allocation.getMonthsTotal() != null ? allocation.getMonthsTotal() : display.getTotalCost());
             display.setBalance(allocation.getBalance() != null ? allocation.getBalance() : BigDecimal.ZERO);
             display.setCoverageByGrant(allocation.getAmountByGrant() != null
                     ? new LinkedHashMap<>(allocation.getAmountByGrant())
@@ -1155,6 +1190,9 @@ public class BudgetMatrixService {
             }
             List<CostAllocationDto> allocationDtos =
                     toCostAllocationDtos(visibleAllocations, grantNames, grantNameByProjectId, true, amountScale);
+            for (CostAllocationDto dto : allocationDtos) {
+                dto.setLineKey(pl.ngo.budget.util.BudgetLineKeys.of("employee-" + employee.getId(), dto.getItemName()));
+            }
 
             Map<String, BigDecimal> byGrant = emptyGrantMap(grantNames);
             for (CostAllocationDto allocation : allocationDtos) {
@@ -1865,17 +1903,20 @@ public class BudgetMatrixService {
             String lineLabel = entry.getKey();
             List<CostAllocation> parts = entry.getValue();
             BigDecimal lineTotal = BigDecimal.ZERO;
+            BigDecimal linePlanned = BigDecimal.ZERO;
             Map<String, BigDecimal> lineByGrant = emptyGrantMap(grantNames);
 
             for (CostAllocation part : parts) {
                 BigDecimal amount = scaleAmount(part.getAmount(), amountScale);
                 lineTotal = lineTotal.add(amount);
+                linePlanned = linePlanned.add(scaleAmount(part.plannedOrAmount(), amountScale));
                 mergeGrantAmounts(lineByGrant, scaledAmountByGrantForAllocation(part, grantNames, grantNameByProjectId, amountScale));
             }
 
             CostAllocationDto dto = new CostAllocationDto();
             dto.setItemName(lineLabel);
             dto.setAmount(lineTotal);
+            dto.setPlannedTotal(linePlanned);
             dto.setAmountByGrant(lineByGrant);
             dto.setAmountEditKind("allocation");
             dto.setAmountEditIds(parts.stream()
@@ -1959,6 +2000,7 @@ public class BudgetMatrixService {
             dto.setCategory(categoryName(allocation.getCategory()));
             BigDecimal amount = scaleAmount(allocation.getAmount(), amountScale);
             dto.setAmount(amount);
+            dto.setPlannedTotal(scaleAmount(allocation.plannedOrAmount(), amountScale));
             dto.setPercent(allocation.getPercentage() != null
                     ? allocation.getPercentage()
                     : BigDecimal.ZERO);
@@ -2030,15 +2072,18 @@ public class BudgetMatrixService {
         return name;
     }
 
-    private List<CostAllocationDto> buildPublicationAllocations(List<String> grantNames, Integer month) {
+    private List<CostAllocationDto> buildPublicationAllocations(List<String> grantNames, Integer month,
+                                                                Map<String, BigDecimal> monthAmounts) {
         List<CostAllocationDto> allocations = new ArrayList<>();
         for (Publication publication : publicationRepository.findByActiveTrueOrderByTitleAsc()) {
-            BigDecimal planned = amountForPeriod(publication.getPlannedCost(), month);
+            BigDecimal planned = monthAmount(monthAmounts, pl.ngo.budget.entity.coverage.BudgetMonthAmount.PUBLICATION,
+                    String.valueOf(publication.getId()), month, publication.getPlannedCost());
             Map<String, BigDecimal> byGrant = emptyGrantMap(grantNames);
 
             CostAllocationDto dto = new CostAllocationDto();
             dto.setItemName(publication.getTitle());
             dto.setAmount(planned);
+            dto.setPlannedTotal(amountForPeriod(publication.budgetPlannedOrCost(), month));
             dto.setAmountByGrant(byGrant);
             dto.setAmountEditKind("publication");
             dto.setAmountEditIds(String.valueOf(publication.getId()));
@@ -2047,12 +2092,14 @@ public class BudgetMatrixService {
         return allocations;
     }
 
-    private List<BudgetItemRowDto> buildTravelSubcategoryRows(List<String> grantNames, Integer month) {
+    private List<BudgetItemRowDto> buildTravelSubcategoryRows(List<String> grantNames, Integer month,
+                                                               Map<String, BigDecimal> monthAmounts) {
         List<BudgetItemRowDto> subcategories = new ArrayList<>();
         subcategories.add(buildTravelScopeRow(
-                TravelBudgetLine.TravelScope.DOMESTIC, TRAVEL_DOMESTIC_KEY, "Krajowe", grantNames, month));
+                TravelBudgetLine.TravelScope.DOMESTIC, TRAVEL_DOMESTIC_KEY, "Krajowe", grantNames, month, monthAmounts));
         subcategories.add(buildTravelScopeRow(
-                TravelBudgetLine.TravelScope.INTERNATIONAL, TRAVEL_INTERNATIONAL_KEY, "Zagraniczne", grantNames, month));
+                TravelBudgetLine.TravelScope.INTERNATIONAL, TRAVEL_INTERNATIONAL_KEY, "Zagraniczne", grantNames, month,
+                monthAmounts));
         return subcategories;
     }
 
@@ -2060,7 +2107,8 @@ public class BudgetMatrixService {
                                                    String rowKey,
                                                    String label,
                                                    List<String> grantNames,
-                                                   Integer month) {
+                                                   Integer month,
+                                                   Map<String, BigDecimal> monthAmounts) {
         List<TravelBudgetLine> lines = travelBudgetLineRepository.findByActiveTrueOrderByScopeAscExpenseTypeAsc()
                 .stream()
                 .filter(line -> line.getScope() == scope)
@@ -2075,14 +2123,18 @@ public class BudgetMatrixService {
         List<CostAllocationDto> allocations = new ArrayList<>();
         for (Map.Entry<String, List<TravelBudgetLine>> entry : byExpense.entrySet()) {
             BigDecimal lineTotal = BigDecimal.ZERO;
+            BigDecimal linePlanned = BigDecimal.ZERO;
             Map<String, BigDecimal> lineByGrant = emptyGrantMap(grantNames);
             for (TravelBudgetLine line : entry.getValue()) {
-                BigDecimal planned = amountForPeriod(line.getPlannedCost(), month);
+                BigDecimal planned = monthAmount(monthAmounts, pl.ngo.budget.entity.coverage.BudgetMonthAmount.TRAVEL,
+                        String.valueOf(line.getId()), month, line.getPlannedCost());
                 lineTotal = lineTotal.add(planned);
+                linePlanned = linePlanned.add(amountForPeriod(line.budgetPlannedOrCost(), month));
             }
             CostAllocationDto dto = new CostAllocationDto();
             dto.setItemName(entry.getKey());
             dto.setAmount(lineTotal);
+            dto.setPlannedTotal(linePlanned);
             dto.setAmountByGrant(lineByGrant);
             dto.setAmountEditKind("travel");
             dto.setAmountEditIds(entry.getValue().stream()
@@ -2126,6 +2178,7 @@ public class BudgetMatrixService {
             CostAllocationDto dto = new CostAllocationDto();
             dto.setItemName(itemName);
             dto.setAmount(planned);
+            dto.setPlannedTotal(event.budgetPlannedOrCost() != null ? event.budgetPlannedOrCost() : BigDecimal.ZERO);
             dto.setAmountByGrant(byGrant);
             dto.setAmountEditKind("event");
             dto.setAmountEditIds(String.valueOf(event.getId()));
@@ -2227,6 +2280,7 @@ public class BudgetMatrixService {
         if (handledCategoryRowKeys.contains(rowKey)) {
             return Optional.empty();
         }
+        Map<String, BigDecimal> monthAmounts = month != null ? loadMonthAmounts(fiscalYear) : Map.of();
 
         BudgetItemRowDto row = switch (categoryCode) {
             case PERSONNEL_CODE -> {
@@ -2240,7 +2294,7 @@ public class BudgetMatrixService {
             case PUBLICATIONS_CODE -> {
                 BudgetItemRowDto publicationsRow = buildExpandableRow(
                         key, PUBLICATIONS_ROW_KEY, PUBLICATIONS_LABEL, grantNames, plannedByItem, plannedByItemAndGrant);
-                applyAllocations(publicationsRow, buildPublicationAllocations(grantNames, month), grantNames);
+                applyAllocations(publicationsRow, buildPublicationAllocations(grantNames, month, monthAmounts), grantNames);
                 yield publicationsRow;
             }
             case EVENTS_CODE -> {
@@ -2255,7 +2309,7 @@ public class BudgetMatrixService {
             case TRAVEL_CODE -> {
                 BudgetItemRowDto travelRow = buildExpandableRow(
                         key, TRAVEL_ROW_KEY, TRAVEL_LABEL, grantNames, plannedByItem, plannedByItemAndGrant);
-                travelRow.setChildren(buildTravelSubcategoryRows(grantNames, month));
+                travelRow.setChildren(buildTravelSubcategoryRows(grantNames, month, monthAmounts));
                 aggregateFromChildren(travelRow, grantNames);
                 yield travelRow;
             }
@@ -2297,12 +2351,9 @@ public class BudgetMatrixService {
             }
         };
 
-        Integer evenMonth = month != null
-                && (PERSONNEL_CODE.equals(categoryCode)
-                || ADMIN_CODE.equals(categoryCode)
-                || PROMOTION_CODE.equals(categoryCode))
-                ? month : null;
-        applyStoredSubcategoriesTree(row, grantNames, evenMonth);
+        // Kwota podkategorii jest roczna i w każdej kategorii dzieli się po równo na miesiące.
+        Integer evenMonth = month;
+        applyStoredSubcategoriesTree(row, grantNames, evenMonth, monthAmounts);
         Map<Long, Map<String, AdminSalaryMove>> salaryMoves = salaryRelocations(grants, fiscalYear, month);
         applyPlanCoverage(row, planCoverageBySource(grants, fiscalYear, month), grantNames);
         if (PERSONNEL_CODE.equals(categoryCode)) {
@@ -2323,21 +2374,23 @@ public class BudgetMatrixService {
         return Optional.of(row);
     }
 
-    private void applyStoredSubcategoriesTree(BudgetItemRowDto row, List<String> grantNames, Integer evenMonth) {
+    private void applyStoredSubcategoriesTree(BudgetItemRowDto row, List<String> grantNames, Integer evenMonth,
+                                              Map<String, BigDecimal> monthAmounts) {
         if (row == null) {
             return;
         }
-        applyStoredSubcategories(row, grantNames, evenMonth);
+        applyStoredSubcategories(row, grantNames, evenMonth, monthAmounts);
         List<BudgetItemRowDto> children = row.getChildren();
         if (children == null || children.isEmpty()) {
             return;
         }
         for (BudgetItemRowDto child : children) {
-            applyStoredSubcategoriesTree(child, grantNames, evenMonth);
+            applyStoredSubcategoriesTree(child, grantNames, evenMonth, monthAmounts);
         }
     }
 
-    private void applyStoredSubcategories(BudgetItemRowDto row, List<String> grantNames, Integer evenMonth) {
+    private void applyStoredSubcategories(BudgetItemRowDto row, List<String> grantNames, Integer evenMonth,
+                                          Map<String, BigDecimal> monthAmounts) {
         if (row == null || row.getRowKey() == null || row.getRowKey().isBlank()) {
             return;
         }
@@ -2367,12 +2420,12 @@ public class BudgetMatrixService {
                 children.stream()
                         .filter(child -> entry.getRowKey().equals(child.getRowKey()))
                         .findFirst()
-                        .ifPresent(child -> applySubcategoryOverlay(child, entry, evenMonth));
+                        .ifPresent(child -> applySubcategoryOverlay(child, entry, evenMonth, monthAmounts));
                 continue;
             }
             BudgetItemRowDto customChild = emptySubcategoryRow(
                     entry.getRowKey(), entry.getName(), categoryLabel, grantNames,
-                    monthlyPlanned(entry.getPlannedAmount(), evenMonth));
+                    subcategoryMonthAmount(entry, evenMonth, monthAmounts));
             customChild.setExpandable(true);
             children.add(customChild);
             existing.add(entry.getRowKey());
@@ -2384,7 +2437,7 @@ public class BudgetMatrixService {
             children.stream()
                     .filter(child -> entry.getRowKey().equals(child.getRowKey()))
                     .findFirst()
-                    .ifPresent(child -> applySubcategoryOverlay(child, entry, evenMonth));
+                    .ifPresent(child -> applySubcategoryOverlay(child, entry, evenMonth, monthAmounts));
         }
         if (children.isEmpty() && hidden.isEmpty()) {
             return;
@@ -2476,17 +2529,55 @@ public class BudgetMatrixService {
         }
     }
 
-    private void applySubcategoryOverlay(BudgetItemRowDto child, BudgetSubcategoryOrder entry, Integer evenMonth) {
+    private void applySubcategoryOverlay(BudgetItemRowDto child, BudgetSubcategoryOrder entry, Integer evenMonth,
+                                         Map<String, BigDecimal> monthAmounts) {
         child.setExpandable(!entry.isHidden());
         if (entry.getName() != null && !entry.getName().isBlank()) {
             child.setItemName(entry.getName());
         }
-        BigDecimal planned = monthlyPlanned(entry.getPlannedAmount(), evenMonth);
+        // Planowany koszt nie zastępuje kosztu pozycji z liniami wydatków; podstawą miesięcy jest kwota miesięcy.
+        boolean leaf = (child.getAllocations() == null || child.getAllocations().isEmpty())
+                && (child.getChildren() == null || child.getChildren().isEmpty());
+        BigDecimal planned = leaf ? subcategoryMonthAmount(entry, evenMonth, monthAmounts) : null;
         if (planned != null) {
             child.setTotalCost(planned);
             BigDecimal coverage = sumGrantMap(child.getCoverageByGrant());
             child.setBalance(planned.subtract(coverage));
         }
+    }
+
+    /** Kwoty miesięcy zapisane osobno (publikacje, podróże, puste podkategorie) — klucz {@link BudgetMonthAmount#key}. */
+    private Map<String, BigDecimal> loadMonthAmounts(int fiscalYear) {
+        Map<String, BigDecimal> amounts = new HashMap<>();
+        for (pl.ngo.budget.entity.coverage.BudgetMonthAmount entry : budgetMonthAmountRepository.findByFiscalYear(fiscalYear)) {
+            amounts.put(pl.ngo.budget.entity.coverage.BudgetMonthAmount.key(
+                    entry.getKind(), entry.getRefKey(), entry.getPlanMonth()), entry.getAmount());
+        }
+        return amounts;
+    }
+
+    private static BigDecimal monthAmount(Map<String, BigDecimal> monthAmounts, String kind, String refKey,
+                                          Integer month, BigDecimal annual) {
+        if (month != null) {
+            BigDecimal stored = monthAmounts.get(pl.ngo.budget.entity.coverage.BudgetMonthAmount.key(kind, refKey, month));
+            if (stored != null) {
+                return stored;
+            }
+        }
+        return amountForPeriod(annual, month);
+    }
+
+    private static BigDecimal subcategoryMonthAmount(BudgetSubcategoryOrder entry, Integer month,
+                                                     Map<String, BigDecimal> monthAmounts) {
+        if (month != null) {
+            BigDecimal stored = monthAmounts.get(pl.ngo.budget.entity.coverage.BudgetMonthAmount.key(
+                    pl.ngo.budget.entity.coverage.BudgetMonthAmount.SUBCATEGORY,
+                    entry.getParentRowKey() + "|" + entry.getRowKey(), month));
+            if (stored != null) {
+                return stored;
+            }
+        }
+        return monthlyPlanned(entry.monthsOrPlanned(), month);
     }
 
     private static BigDecimal monthlyPlanned(BigDecimal plannedAmount, Integer evenMonth) {

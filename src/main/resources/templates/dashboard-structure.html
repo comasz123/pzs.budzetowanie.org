@@ -19,7 +19,7 @@
     </style>
 </head>
 <body class="bg-light">
-<div class="container-fluid px-4 py-3" style="max-width: 60rem;">
+<div class="container-fluid px-4 py-3" style="max-width: 96rem;">
     <div th:replace="~{fragments/nav :: budget-nav('dashboard')}"></div>
 
     <nav class="mb-3" aria-label="breadcrumb">
@@ -46,8 +46,9 @@
                     class="h4 m-0" th:text="${structureNode.name}">Kategoria</h1>
                 <p class="text-muted small mb-0 mt-1">
                     <strong>Pogrubione</strong> to kategorie i podkategorie, zwykły tekst to wydatki. Wydatek przeniesiesz
-                    do innej kategorii listą po prawej. Kwota kategorii jest sumą jej zawartości.
-                    <span th:if="${structureNode.evenMonthlySplit}">Wpisana kwota jest roczna i dzieli się po równo na każdy miesiąc.</span>
+                    do innej kategorii listą po prawej. Kwota to <strong>Planowany Koszt</strong> na rok; kwota kategorii jest sumą jej zawartości.
+                    Przycisk <strong>12</strong> rozpisuje planowany koszt wydatku po równo na 12 miesięcy
+                    (pensję — na miesiące okresu pracy od–do).
                 </p>
             </div>
             <a class="btn btn-primary btn-sm" th:href="@{__${budgetBase}__(year=${selectedYear}, edit=true)}">Gotowe</a>
@@ -55,9 +56,10 @@
 
         <div class="card-body p-0">
             <div th:if="${!structureNode.editable}" class="alert alert-info m-3 py-2 small">
-                Pracownicy i wynagrodzenia edytujesz w zakładce <strong>Pracownicy</strong>.
+                Tu zmieniasz planowany koszt wynagrodzeń i rozpisujesz go na miesiące. Pracowników dodajesz i usuwasz
+                w zakładce <strong>Pracownicy</strong>.
             </div>
-            <th:block th:if="${structureNode.editable}">
+            <th:block>
                 <div th:if="${#lists.isEmpty(structureNode.items)}" class="p-3 text-muted small">
                     Brak zawartości — dodaj pierwszą podkategorię poniżej.
                 </div>
@@ -124,8 +126,14 @@
         body.append('amount', input.value || '');
         body.append('year', String(budgetYear));
         input.classList.remove('is-invalid');
+        // Wydatek z planu: planowany koszt zapisuje się w jego linii; miesiące się nie zmieniają.
+        const path = input.dataset.kind ? '/lines/planned' : '/structure/amount';
+        if (input.dataset.kind) {
+            body.append('kind', input.dataset.kind);
+            body.append('ids', input.dataset.ids || '');
+        }
         try {
-            const response = await fetch(budgetBase + '/structure/amount', {
+            const response = await fetch(budgetBase + path, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
                 body: body.toString(),
@@ -254,6 +262,71 @@
             form.classList.toggle('d-flex');
             if (!form.classList.contains('d-none')) {
                 form.querySelector('input[name="name"]').focus();
+            }
+        });
+    });
+    async function postLine(path, fields) {
+        const body = new URLSearchParams();
+        body.append(csrfParameter, csrfToken);
+        body.append('year', String(budgetYear));
+        Object.entries(fields).forEach(([key, value]) => body.append(key, value || ''));
+        const response = await fetch(budgetBase + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: body.toString()
+        });
+        if (!response.ok) {
+            alert(await response.text());
+            return false;
+        }
+        return true;
+    }
+    document.querySelectorAll('.structure-split12').forEach(button => {
+        button.addEventListener('click', async () => {
+            const input = button.closest('.structure-row').querySelector('.structure-amount');
+            const amount = input ? amountOf(input) : 0;
+            if (!confirm('Rozpisać ' + (input ? input.value : '') + ' zł po równo na 12 miesięcy?')) {
+                return;
+            }
+            button.disabled = true;
+            const ok = await postLine('/lines/split-months', {
+                kind: button.dataset.kind,
+                ids: button.dataset.ids,
+                amount: String(amount),
+                parentRowKey: button.dataset.parentRowKey,
+                rowKey: button.dataset.rowKey
+            });
+            button.disabled = false;
+            if (ok) {
+                button.classList.replace('btn-outline-secondary', 'btn-success');
+                setTimeout(() => button.classList.replace('btn-success', 'btn-outline-secondary'), 1200);
+            }
+        });
+    });
+    document.querySelectorAll('.structure-period').forEach(period => {
+        const from = period.querySelector('.structure-period-from');
+        const to = period.querySelector('.structure-period-to');
+        [from, to].forEach(input => input.addEventListener('change', async () => {
+            [from, to].forEach(i => i.classList.remove('is-invalid'));
+            const ok = await postLine('/employees/' + encodeURIComponent(period.dataset.employeeId) + '/budget-period', {
+                from: from.value, to: to.value
+            });
+            if (!ok) {
+                input.classList.add('is-invalid');
+            }
+        }));
+    });
+    document.querySelectorAll('.structure-line-delete').forEach(button => {
+        button.addEventListener('click', async () => {
+            if (!confirm('Usunąć ten wydatek z planu?')) {
+                return;
+            }
+            button.disabled = true;
+            if (await postLine('/lines/delete', {
+                kind: button.dataset.kind, ids: button.dataset.ids, lineKey: button.dataset.lineKey })) {
+                window.location.reload();
+            } else {
+                button.disabled = false;
             }
         });
     });

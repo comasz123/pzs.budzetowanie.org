@@ -63,18 +63,26 @@
             word-break: normal; overflow-wrap: normal; hyphens: none;
         }
         #budget-matrix-table .col-sticky-planned,
+        #budget-matrix-table .col-sticky-plancost,
         #budget-matrix-table .col-sticky-balance {
             position: sticky; z-index: 2; min-width: 6.5rem; background: #fff;
         }
-        #budget-matrix-table .col-sticky-planned { left: 13rem; }
+        #budget-matrix-table .col-sticky-plancost { left: 13rem; }
+        #budget-matrix-table .col-sticky-planned { left: 19.5rem; }
+        /* Realizacja nie ma kolumny planowanego kosztu: wydatki zaraz przy pozycji. */
+        #budget-matrix-table.no-plancost .col-sticky-planned { left: 13rem; }
         #budget-matrix-table .col-sticky-balance { right: 0; box-shadow: -2px 0 0 #dee2e6; }
         #budget-matrix-table thead th.col-sticky-planned,
+        #budget-matrix-table thead th.col-sticky-plancost,
         #budget-matrix-table thead th.col-sticky-balance { z-index: 4; background: #212529; }
         #budget-matrix-table tr.budget-totals-row td.col-sticky-planned,
+        #budget-matrix-table tr.budget-totals-row td.col-sticky-plancost,
         #budget-matrix-table tr.budget-totals-row td.col-sticky-balance { background: #e2e3e5; }
         #budget-matrix-table tr.grant-remaining-row td.col-sticky-planned,
+        #budget-matrix-table tr.grant-remaining-row td.col-sticky-plancost,
         #budget-matrix-table tr.grant-remaining-row td.col-sticky-balance,
         #budget-matrix-table tr.grant-year-split td.col-sticky-planned,
+        #budget-matrix-table tr.grant-year-split td.col-sticky-plancost,
         #budget-matrix-table tr.grant-year-split td.col-sticky-balance { background: #f8f9fa; }
         #budget-matrix-table .col-grant-header,
         #budget-matrix-table td.col-amount { min-width: 5.5rem; }
@@ -450,12 +458,16 @@
                th:text="${monthLabel}">Styczeń</a>
         </div>
         <div class="card-body p-0 table-responsive">
-            <table class="table table-sm table-bordered table-hover align-middle m-0 budget-matrix" id="budget-matrix-table">
+            <table class="table table-sm table-bordered table-hover align-middle m-0 budget-matrix" id="budget-matrix-table"
+                   th:classappend="${budgetBase == '/realizacja'} ? 'no-plancost' : ''">
                 <thead class="table-dark sticky-top">
                     <tr>
                         <th class="col-label">Pozycja / Koszt</th>
+                        <th th:unless="${budgetBase == '/realizacja'}"
+                            class="text-end col-amount-header budget-view-amount-col col-sticky-plancost">Planowany Koszt</th>
                         <th class="text-end col-amount-header budget-view-amount-col col-sticky-planned"
-                            th:text="${budgetBase == '/realizacja'} ? 'Wydatki' : 'Planowany Koszt'">Planowany Koszt</th>
+                            th:text="${budgetBase == '/realizacja'} ? 'Wydatki' : (${monthView} ? 'Koszt w miesiącu' : 'Pokrycie w miesiącach')"
+                            th:title="${budgetBase != '/realizacja' && !monthView} ? 'Planowany koszt minus suma miesięcy; 0 = cały koszt rozpisany na miesiące' : null">Pokrycie w miesiącach</th>
                         <th th:each="grant : ${budgetData.grantNames}" class="text-end col-grant-header budget-view-amount-col" th:text="${grant}">Grant</th>
                         <th class="text-end col-amount-header budget-view-amount-col col-sticky-balance">Bilans</th>
                     </tr>
@@ -505,6 +517,10 @@
                                 </form>
                             </div>
                         </td>
+                        <td th:unless="${budgetBase == '/realizacja'}"
+                            class="text-end col-amount budget-view-amount-col col-sticky-plancost"
+                            th:classappend="${row.depth == 0 ? 'fw-bold' : ''}"
+                            th:text="${row.plannedCost != null && row.plannedCost > 0 ? #numbers.formatDecimal(row.plannedCost, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
                         <td class="text-end col-amount budget-view-amount-col col-sticky-planned"
                             th:classappend="${row.depth == 0 ? 'fw-bold' : ''}">
                             <input th:if="${monthView and editMode and row.amountEditable}"
@@ -513,7 +529,10 @@
                                    class="form-control form-control-sm text-end budget-month-amount money-input"
                                    th:attr="data-kind=${row.amountEditKind},data-ids=${row.amountEditIds},aria-label=${'Planowany koszt: ' + row.itemName}"
                                    th:value="${row.totalCost != null ? #numbers.formatDecimal(row.totalCost, 1, 'WHITESPACE', 2, 'COMMA') : '0,00'}"/>
-                            <span th:unless="${monthView and editMode and row.amountEditable}"
+                            <span th:if="${row.monthsGap != null}"
+                                  th:classappend="${row.monthsGap.signum() != 0} ? 'text-negative' : 'text-positive'"
+                                  th:text="${#numbers.formatDecimal(row.monthsGap, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</span>
+                            <span th:if="${row.monthsGap == null and !(monthView and editMode and row.amountEditable)}"
                                   th:text="${row.totalCost != null && row.totalCost > 0 ? #numbers.formatDecimal(row.totalCost, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">0.00</span>
                         </td>
                         <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount budget-view-amount-col"
@@ -524,7 +543,11 @@
                     </tr>
                     <tr class="table-secondary fw-semibold budget-totals-row">
                         <td class="col-label" th:text="${budgetBase == '/realizacja'} ? 'Razem' : 'Razem (plan)'">Razem (plan)</td>
-                        <td class="text-end col-amount col-sticky-planned" th:text="${#numbers.formatDecimal(budgetData.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
+                        <td th:unless="${budgetBase == '/realizacja'}" class="text-end col-amount col-sticky-plancost"
+                            th:text="${budgetData.totalPlannedCost != null ? #numbers.formatDecimal(budgetData.totalPlannedCost, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
+                        <td class="text-end col-amount col-sticky-planned"
+                            th:classappend="${budgetData.totalMonthsGap != null} ? (${budgetData.totalMonthsGap.signum() != 0} ? 'text-negative' : 'text-positive') : ''"
+                            th:text="${#numbers.formatDecimal(budgetData.totalMonthsGap != null ? budgetData.totalMonthsGap : budgetData.totalCost, 1, 'WHITESPACE', 2, 'COMMA')}">0</td>
                         <td th:each="grant : ${budgetData.grantNames}" class="text-end col-amount"
                             th:text="${budgetData.totalCoverageByGrant.get(grant) != null && budgetData.totalCoverageByGrant.get(grant).signum() > 0 ? #numbers.formatDecimal(budgetData.totalCoverageByGrant.get(grant), 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
                         <td class="text-end col-amount col-sticky-balance"
