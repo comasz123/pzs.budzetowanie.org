@@ -87,7 +87,12 @@ public class DashboardController {
         model.addAttribute("selectedMonthName", PolishMonthNames.of(selectedMonth));
         model.addAttribute("selectedYear", selectedYear);
         model.addAttribute("availableYears", budgetMatrixService.getAvailableFiscalYears());
-        model.addAttribute("budgetData", budgetMatrixService.getBudgetDashboardDataForMonth(selectedYear, selectedMonth));
+        pl.ngo.budget.dto.BudgetDashboardDto budgetData =
+                budgetMatrixService.getBudgetDashboardDataForMonth(selectedYear, selectedMonth);
+        if (Boolean.TRUE.equals(model.getAttribute("editMode"))) {
+            budgetStructureService.applyUnsplitAmounts(budgetData, selectedYear);
+        }
+        model.addAttribute("budgetData", budgetData);
         realizeIfNeeded(model, selectedYear, selectedMonth);
         model.addAttribute("backupInfo", databaseBackupService.getLatestBackupInfo());
         return "dashboard";

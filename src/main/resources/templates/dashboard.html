@@ -69,7 +69,7 @@
         }
         #budget-matrix-table .col-sticky-plancost { left: 13rem; }
         #budget-matrix-table .col-sticky-planned { left: 19.5rem; }
-        /* Realizacja nie ma kolumny planowanego kosztu: wydatki zaraz przy pozycji. */
+        /* Planowany koszt jest tylko w rocznym budżecie (nie w miesiącu ani w realizacji): koszt zaraz przy pozycji. */
         #budget-matrix-table.no-plancost .col-sticky-planned { left: 13rem; }
         #budget-matrix-table .col-sticky-balance { right: 0; box-shadow: -2px 0 0 #dee2e6; }
         #budget-matrix-table thead th.col-sticky-planned,
@@ -105,15 +105,32 @@
             text-align: end;
             vertical-align: bottom;
         }
+        /* Kwoty tej samej wielkości co nazwy pozycji w wierszu. */
         .col-amount {
             white-space: nowrap;
             font-variant-numeric: tabular-nums;
-            font-size: 0.9375rem;
+            font-size: inherit;
             font-weight: 500;
         }
-        .allocation-inner td.col-amount {
-            font-size: 0.9375rem;
+        .budget-row-depth-2 td.col-amount { font-size: 0.75rem; font-weight: 400; }
+        /* Edycja miesiąca: po kliknięciu kwoty pod polem widać część planowanego kosztu jeszcze nierozpisaną. */
+        #budget-matrix-table td.col-sticky-planned:focus-within { z-index: 5; }
+        .budget-unsplit-hint {
+            display: none;
+            position: absolute;
+            right: 0.25rem;
+            top: calc(100% - 0.25rem);
+            z-index: 6;
+            padding: 0.15rem 0.4rem;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            background: #fff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+            font-size: 0.75rem;
+            font-weight: 500;
+            white-space: nowrap;
         }
+        .budget-month-amount:focus + .budget-unsplit-hint { display: block; }
         .year-select {
             font-size: 0.85em;
             font-weight: inherit;
@@ -408,7 +425,7 @@
                 <span th:if="${monthView}" th:text="${selectedMonthName}">Styczeń</span>
             </div>
             <span class="text-muted small" th:if="${editMode and monthView}">
-                Zmień kwoty w kolumnie Planowany Koszt. Każdy miesiąc edytujesz osobno, także wynagrodzenia i koszty administracyjne; kwota roczna to suma miesięcy. Kategorie edytuje się w budżecie rocznym.
+                Zmień kwoty w kolumnie Koszt w miesiącu. Każdy miesiąc edytujesz osobno, także wynagrodzenia i koszty administracyjne; kwota roczna to suma miesięcy. Kategorie edytuje się w budżecie rocznym.
             </span>
             <span class="text-muted small budget-edit-only" th:if="${editMode and !monthView}">
                 Kliknij kategorię, aby edytować podpozycje w oknie. Nową kategorię główną dodaj na dole listy.
@@ -459,11 +476,11 @@
         </div>
         <div class="card-body p-0 table-responsive">
             <table class="table table-sm table-bordered table-hover align-middle m-0 budget-matrix" id="budget-matrix-table"
-                   th:classappend="${budgetBase == '/realizacja'} ? 'no-plancost' : ''">
+                   th:classappend="${budgetData.totalPlannedCost == null} ? 'no-plancost' : ''">
                 <thead class="table-dark sticky-top">
                     <tr>
                         <th class="col-label">Pozycja / Koszt</th>
-                        <th th:unless="${budgetBase == '/realizacja'}"
+                        <th th:if="${budgetData.totalPlannedCost != null}"
                             class="text-end col-amount-header budget-view-amount-col col-sticky-plancost">Planowany Koszt</th>
                         <th class="text-end col-amount-header budget-view-amount-col col-sticky-planned"
                             th:text="${budgetBase == '/realizacja'} ? 'Wydatki' : (${monthView} ? 'Koszt w miesiącu' : 'Pokrycie w miesiącach')"
@@ -517,7 +534,7 @@
                                 </form>
                             </div>
                         </td>
-                        <td th:unless="${budgetBase == '/realizacja'}"
+                        <td th:if="${budgetData.totalPlannedCost != null}"
                             class="text-end col-amount budget-view-amount-col col-sticky-plancost"
                             th:classappend="${row.depth == 0 ? 'fw-bold' : ''}"
                             th:text="${row.plannedCost != null && row.plannedCost > 0 ? #numbers.formatDecimal(row.plannedCost, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
@@ -527,8 +544,12 @@
                                    type="text"
                                    inputmode="decimal"
                                    class="form-control form-control-sm text-end budget-month-amount money-input"
-                                   th:attr="data-kind=${row.amountEditKind},data-ids=${row.amountEditIds},aria-label=${'Planowany koszt: ' + row.itemName}"
+                                   th:attr="data-kind=${row.amountEditKind},data-ids=${row.amountEditIds},aria-label=${'Koszt w miesiącu: ' + row.itemName}"
                                    th:value="${row.totalCost != null ? #numbers.formatDecimal(row.totalCost, 1, 'WHITESPACE', 2, 'COMMA') : '0,00'}"/>
+                            <div th:if="${monthView and editMode and row.amountEditable and row.unsplitAmount != null}"
+                                 class="budget-unsplit-hint"
+                                 th:classappend="${row.unsplitAmount.signum() < 0} ? 'text-negative' : ''"
+                                 th:text="${'Nierozpisane na miesiące: ' + #numbers.formatDecimal(row.unsplitAmount, 1, 'WHITESPACE', 2, 'COMMA')}">Nierozpisane na miesiące: 0,00</div>
                             <span th:if="${row.monthsGap != null}"
                                   th:classappend="${row.monthsGap.signum() != 0} ? 'text-negative' : 'text-positive'"
                                   th:text="${#numbers.formatDecimal(row.monthsGap, 1, 'WHITESPACE', 2, 'COMMA')}">0,00</span>
@@ -543,7 +564,7 @@
                     </tr>
                     <tr class="table-secondary fw-semibold budget-totals-row">
                         <td class="col-label" th:text="${budgetBase == '/realizacja'} ? 'Razem' : 'Razem (plan)'">Razem (plan)</td>
-                        <td th:unless="${budgetBase == '/realizacja'}" class="text-end col-amount col-sticky-plancost"
+                        <td th:if="${budgetData.totalPlannedCost != null}" class="text-end col-amount col-sticky-plancost"
                             th:text="${budgetData.totalPlannedCost != null ? #numbers.formatDecimal(budgetData.totalPlannedCost, 1, 'WHITESPACE', 2, 'COMMA') : '-'}">-</td>
                         <td class="text-end col-amount col-sticky-planned"
                             th:classappend="${budgetData.totalMonthsGap != null} ? (${budgetData.totalMonthsGap.signum() != 0} ? 'text-negative' : 'text-positive') : ''"

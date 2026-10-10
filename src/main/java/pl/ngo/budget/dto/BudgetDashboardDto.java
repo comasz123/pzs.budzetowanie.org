@@ -94,6 +94,8 @@ public class BudgetDashboardDto {
         private BigDecimal monthsCost;
         /** „Pokrycie w miesiącach”: planowany koszt minus suma miesięcy; zero = całość rozpisana. */
         private BigDecimal monthsGap;
+        /** Edycja miesiąca: część planowanego kosztu pozycji jeszcze nierozpisana na miesiące (jak monthsGap roku). */
+        private BigDecimal unsplitAmount;
     }
 
     @Getter

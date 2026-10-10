@@ -120,6 +120,39 @@ public class BudgetStructureService {
                 dashboard.getTotalCost() != null ? dashboard.getTotalCost() : BigDecimal.ZERO));
     }
 
+    /**
+     * Edycja miesiąca: każda edytowalna kwota dostaje część planowanego kosztu pozycji jeszcze nierozpisaną
+     * na miesiące (planowany koszt minus suma dwunastu miesięcy).
+     */
+    @Transactional(readOnly = true)
+    public void applyUnsplitAmounts(BudgetDashboardDto month, int fiscalYear) {
+        if (month == null || month.getDisplayRows() == null) {
+            return;
+        }
+        BudgetDashboardDto year = budgetMatrixService.getBudgetDashboardData(fiscalYear);
+        applyPlannedCosts(year);
+        Map<String, BigDecimal> gapByKey = new LinkedHashMap<>();
+        for (BudgetDashboardDto.BudgetDisplayRowDto row : year.getDisplayRows()) {
+            String key = displayKey(row);
+            if (key != null && row.getMonthsGap() != null) {
+                gapByKey.putIfAbsent(key, row.getMonthsGap());
+            }
+        }
+        for (BudgetDashboardDto.BudgetDisplayRowDto row : month.getDisplayRows()) {
+            String key = row.isAmountEditable() ? displayKey(row) : null;
+            if (key != null) {
+                row.setUnsplitAmount(gapByKey.get(key));
+            }
+        }
+    }
+
+    private static String displayKey(BudgetDashboardDto.BudgetDisplayRowDto row) {
+        if (row.getRowKey() != null && !row.getRowKey().isBlank()) {
+            return "row:" + row.getRowKey();
+        }
+        return row.getLineKey() != null ? "line:" + row.getLineKey() : null;
+    }
+
     private static BigDecimal sumValues(Map<String, BigDecimal> byGrant) {
         if (byGrant == null) {
             return BigDecimal.ZERO;

@@ -120,6 +120,15 @@ class CoverageFollowsCostMonthsTest {
         assertEquals(0, new BigDecimal("800.00").compareTo(display.getMonthsGap()), "pokrycie w miesiącach");
         assertEquals(0, new BigDecimal("3200.00").compareTo(display.getCoverageByGrant().get(GRANT)), "pokrycie roczne");
         assertEquals(0, display.getBilans().signum(), "bilans: pokrycie minus planowany koszt");
+
+        // Edycja miesiąca: przy kwocie miesiąca widać część planowanego kosztu jeszcze nierozpisaną.
+        BudgetDashboardDto march = budgetMatrixService.getBudgetDashboardDataForMonth(YEAR, 3);
+        budgetStructureService.applyUnsplitAmounts(march, YEAR);
+        BudgetDashboardDto.BudgetDisplayRowDto marchLine = march.getDisplayRows().stream()
+                .filter(row -> LINE.equals(row.getItemName()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(0, new BigDecimal("800.00").compareTo(marchLine.getUnsplitAmount()), "nierozpisane w edycji miesiąca");
     }
 
     private CostAllocation line(BudgetItemTemplate category, Integer month, BigDecimal amount) {

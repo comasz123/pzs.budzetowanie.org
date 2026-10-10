@@ -126,7 +126,9 @@ public class BudgetExcelExportService {
         Sheet sheet = workbook.createSheet(sheetName(sheetTitle));
         List<String> grants = annual.getGrantNames() != null ? annual.getGrantNames() : List.of();
         // Widok planowania: dodatkowa kolumna "Planowany Koszt" przed kolumną pokrycia w miesiącach.
-        int grantStart = includeGrantInfo ? 3 : 2;
+        // Planowany koszt ma tylko roczny budżet (w miesiącu i w realizacji go nie ma).
+        boolean plannedColumn = includeGrantInfo && annual.getTotalPlannedCost() != null;
+        int grantStart = plannedColumn ? 3 : 2;
         int balanceColumn = grantStart + grants.size();
 
         int rowIndex = 0;
@@ -147,8 +149,8 @@ public class BudgetExcelExportService {
         header.setHeightInPoints(36);
         writeText(header, 0, POSITION_HEADER, styles.headerLeft);
         // Widok planowania: kolumna "Planowany Koszt" (ze struktury budżetu), a po niej pokrycie w miesiącach.
-        int monthsColumn = includeGrantInfo ? 2 : 1;
-        if (includeGrantInfo) {
+        int monthsColumn = plannedColumn ? 2 : 1;
+        if (plannedColumn) {
             writeText(header, 1, COST_HEADER, styles.header);
         }
         String monthsHeader = annual.getTotalMonthsGap() != null ? COVERAGE_HEADER
@@ -166,7 +168,7 @@ public class BudgetExcelExportService {
             int depth = depthOf(displayRow);
             Row row = sheet.createRow(rowIndex++);
             writeText(row, 0, displayRow.getItemName(), styles.text(depth));
-            if (includeGrantInfo) {
+            if (plannedColumn) {
                 writeMoney(row, 1, displayRow.getPlannedCost(), styles.money(depth, displayRow.getPlannedCost()));
             }
             BigDecimal monthsValue = displayRow.getMonthsGap() != null ? displayRow.getMonthsGap() : displayRow.getTotalCost();
@@ -183,7 +185,7 @@ public class BudgetExcelExportService {
 
         Row total = sheet.createRow(rowIndex);
         writeText(total, 0, totalLabel, styles.totalText);
-        if (includeGrantInfo) {
+        if (plannedColumn) {
             writeMoney(total, 1, annual.getTotalPlannedCost(), styles.totalMoney(annual.getTotalPlannedCost()));
         }
         BigDecimal monthsTotal = annual.getTotalMonthsGap() != null ? annual.getTotalMonthsGap() : annual.getTotalCost();
